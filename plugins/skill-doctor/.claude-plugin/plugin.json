@@ -1,0 +1,9 @@
+{
+  "name": "skill-doctor",
+  "description": "스킬의 건강 상태를 크로스 세션으로 진단하고 점진적으로 개선하는 플러그인. CD 점수 기반 시그널 수집 → 에스컬레이션 → 스킬 수정 제안.",
+  "version": "0.1.0",
+  "author": {
+    "name": "jake",
+    "email": "yhkim@madup.com"
+  }
+}

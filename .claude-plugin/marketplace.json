@@ -1,0 +1,20 @@
+{
+  "name": "jake-plugins",
+  "owner": {
+    "name": "jake",
+    "email": "yhkim@madup.com"
+  },
+  "metadata": {
+    "description": "Jake의 Claude Code 플러그인 마켓플레이스",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "skill-doctor",
+      "source": "./plugins/skill-doctor",
+      "description": "스킬의 건강 상태를 크로스 세션으로 진단하고 점진적으로 개선하는 플러그인",
+      "version": "0.1.0",
+      "category": "developer-tools"
+    }
+  ]
+}
