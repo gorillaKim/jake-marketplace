@@ -15,6 +15,13 @@
       "description": "스킬의 건강 상태를 크로스 세션으로 진단하고 점진적으로 개선하는 플러그인",
       "version": "0.1.0",
       "category": "developer-tools"
+    },
+    {
+      "name": "gtm-tag",
+      "source": "./plugins/gtm-tag",
+      "description": "GA4 이벤트 CSV → gtm-tracker 이벤트 정의 + trackEvent 자동 삽입",
+      "version": "0.1.0",
+      "category": "developer-tools"
     }
   ]
 }

@@ -1,0 +1,9 @@
+{
+  "name": "gtm-tag",
+  "description": "기획자의 GA4 이벤트 CSV를 파싱하여 gtm-tracker 기반으로 이벤트 정의 + trackEvent 자동 삽입. 서브에이전트 파이프라인.",
+  "version": "0.1.0",
+  "author": {
+    "name": "jake",
+    "email": "yhkim@madup.com"
+  }
+}
