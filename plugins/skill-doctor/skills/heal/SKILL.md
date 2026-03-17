@@ -11,29 +11,55 @@ CLI 경로: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py`
 
 ### 1. 진단 데이터 확인
 
-스킬명이 지정되면 바로 진단 데이터를 조회:
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py diagnose --skill <name> --full
-```
-
 스킬명이 없으면 목록에서 health_score가 낮은 스킬을 보여주고 선택하게 한다:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py list
+```
+
+**마켓플레이스 스킬 차단**: list 결과에서 대상 스킬의 `source`가 `"marketplace"`이면 heal을 중단하고 아래 메시지를 표시:
+
+```
+⚠️ '{skill}'은(는) 외부 플러그인 스킬({plugin_name})이므로 직접 수정할 수 없습니다.
+진단 리포트는 `/skill-doctor:report`에서 확인할 수 있으며, 축적된 데이터를 바탕으로
+`/skill-doctor:suggest`를 통해 개선된 로컬 스킬 생성을 제안받을 수 있습니다.
+```
+
+그 후 AskUserQuestion으로 대안을 제시:
+```yaml
+questions:
+  - question: '이 스킬은 외부 플러그인이라 직접 수정할 수 없습니다. 대신 무엇을 할까요?'
+    header: '대안'
+    options:
+      - label: 'suggest — 대체 로컬 스킬 제안'
+        description: '리포트 데이터를 바탕으로 개선된 로컬 스킬을 제안합니다'
+      - label: 'report — 진단 리포트 확인'
+        description: '축적된 진단 이력을 확인합니다'
+      - label: '종료'
+        description: '여기서 마칩니다'
+    multiSelect: false
+```
+
+사용자 선택에 따라 해당 스킬을 실행하고 여기서 종료한다.
+
+**로컬 스킬인 경우** 계속 진행:
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py diagnose --skill <name> --full
 ```
 
 ### 2. 에스컬레이션 레벨 확인
 
 diagnose JSON의 cross_session.cause_type_counts에서 반복 횟수를 확인:
 - 1회: "아직 반복 패턴이 아닙니다. 더 데이터가 쌓인 후 시도하세요." → 종료
-- 2회: 리포트만 생성 (heal 불필요)
+- 2회: 리포트를 `~/.claude/skill-doctor/reports/`에 저장하고 "아직 heal 단계가 아닙니다. 리포트를 저장했습니다." → 종료
 - **3회+: heal 대상** → 다음 단계 진행
 
 ### 3. 대상 스킬 파일 읽기
 
 스킬 파일 경로를 찾는다:
 1. skill_profiles의 skill_path 컬럼 확인
-2. skill_path가 없으면 `.claude/skills/`, `.claude/plugins/` 에서 스킬명으로 탐색
-3. 찾지 못하면 사용자에게 경로를 질문
+2. skill_path가 없으면 `.claude/skills/{스킬명}/SKILL.md` 에서 탐색
+3. 없으면 `~/.claude/plugins/cache/*/*/skills/{스킬명}/SKILL.md` 패턴으로 마켓플레이스 캐시에서 탐색
+4. 찾지 못하면 사용자에게 경로를 질문
 
 스킬 파일(SKILL.md)을 Read 도구로 읽는다.
 
@@ -110,3 +136,8 @@ questions:
 ```
 
 사용자 선택에 따라 해당 스킬을 실행한다.
+
+## 시그널 기록
+
+> **자동 수집 (Hook+Agent)**: 도구 실패, 사용자 메시지 등 raw 이벤트를 Hook이 수집하고, Stop 시 Claude가 유의미한 시그널만 판별하여 DB에 기록합니다.
+> **수동 보조**: redo, manual_fix, clarify, blocked는 hook으로 감지하기 어려우므로, 발생 시 `/skill-doctor:record`로 수동 기록하면 데이터 품질이 향상됩니다.

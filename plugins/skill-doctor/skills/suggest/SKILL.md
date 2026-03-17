@@ -5,6 +5,8 @@ description: 반복 작업 패턴을 분석하여 새 스킬이나 에이전트 
 
 # skill-doctor 자동화 제안 (suggest)
 
+CLI 경로: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py`
+
 ## 실행 절차
 
 ### 1. 분석 데이터 수집 (온디맨드)
@@ -108,3 +110,8 @@ questions:
 ```
 
 사용자 선택에 따라 해당 스킬을 실행한다. 제안 이력은 `~/.claude/skill-doctor/reports/suggest-{timestamp}.md`에 저장.
+
+## 시그널 기록
+
+> **자동 수집 (Hook+Agent)**: 도구 실패, 사용자 메시지 등 raw 이벤트를 Hook이 수집하고, Stop 시 Claude가 유의미한 시그널만 판별하여 DB에 기록합니다.
+> **수동 보조**: redo, manual_fix, clarify, blocked는 hook으로 감지하기 어려우므로, 발생 시 `/skill-doctor:record`로 수동 기록하면 데이터 품질이 향상됩니다.

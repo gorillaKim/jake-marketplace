@@ -105,6 +105,7 @@ questions:
 ```json
 {
   "skill": "<스킬명>",
+  "skill_path": "<스킬 파일 경로 (선택, 예: .claude/skills/스킬명/SKILL.md)>",
   "signals": [
     {
       "type": "<타입>",
@@ -116,6 +117,7 @@ questions:
   ]
 }
 ```
+사용자가 multiSelect로 여러 시그널 타입을 선택한 경우, 각 타입별로 별도의 signal 객체를 생성하여 signals 배열에 추가한다.
 
 ### 3. CLI로 기록
 ```bash
@@ -159,3 +161,8 @@ questions:
 ```
 
 사용자 선택에 따라 해당 스킬을 실행한다.
+
+## 시그널 기록
+
+> **자동 수집 (Hook+Agent)**: 도구 실패, 사용자 메시지 등 raw 이벤트를 Hook이 수집하고, Stop 시 Claude가 유의미한 시그널만 판별하여 DB에 기록합니다.
+> **수동 보조**: redo, manual_fix, clarify, blocked는 hook으로 감지하기 어려우므로, 발생 시 `/skill-doctor:record`로 수동 기록하면 데이터 품질이 향상됩니다.

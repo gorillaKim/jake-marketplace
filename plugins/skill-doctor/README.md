@@ -11,19 +11,29 @@
 
 ## 사용법
 
-### 자동 시그널 수집
+### 자동 시그널 수집 (Hook 기반)
 
-`/skill-doctor:init`으로 프로젝트 CLAUDE.md에 시그널 기록 지침을 추가하면, 모든 스킬 실행 중 시그널이 자동으로 수집됩니다.
+skill-doctor는 **Hook + Agent 하이브리드** 방식으로 시그널을 자동 수집합니다. CLAUDE.md 설정 없이도 동작합니다.
 
 ```
-스킬 실행 중 이벤트 발생 → 메모리에 누적
-  ↓
-스킬 종료 → cli.py record
-  ↓
-CD ≥ 50 → cli.py diagnose → skill-doctor 서브에이전트 → 리포트
+[Phase 1: Hook]  도구 실패, 사용자 메시지, 스킬명을 raw 이벤트로 수집
+                      ↓
+[Phase 2: Stop]  누적된 raw 이벤트를 Claude 컨텍스트에 주입
+                      ↓
+[Phase 3: Agent] Claude가 유의미한 시그널만 판별 + cause_type 귀속 → DB 기록
+                      ↓
+                 CD ≥ 50 → diagnose → 리포트
 ```
 
-> skill-doctor 자체(`/skill-doctor:diagnose`) 실행 시에는 시그널을 수집하지 않습니다.
+| 수집 방식 | 역할 | 설정 |
+|-----------|------|------|
+| **Hook + Agent (자동)** | 시스템이 raw 이벤트 수집 → Claude가 의미 판단 + 기록 | 불필요 (플러그인 내장) |
+| **수동 (/record)** | 사용자가 직접 시그널 기록 — 가장 정확한 데이터 | 불필요 |
+| **CLAUDE.md (보조)** | hook이 감지 못하는 redo, manual_fix 등 보조 수집 | `/skill-doctor:init`에서 선택 |
+
+### 마켓플레이스 스킬 지원
+
+`discover-marketplace` 커맨드로 설치된 마켓플레이스 플러그인의 스킬을 자동 발견하여 추적합니다. 마켓플레이스 스킬은 진단은 가능하지만 직접 수정(heal)은 불가합니다 — 리포트만 축적하여 추후 개선된 로컬 스킬 생성에 활용합니다.
 
 ### 사용 가능한 명령어
 
@@ -37,6 +47,7 @@ CD ≥ 50 → cli.py diagnose → skill-doctor 서브에이전트 → 리포트
 | `/skill-doctor:report` | 과거 진단 리포트 조회 |
 | `/skill-doctor:suggest` | 반복 패턴 분석 → 새 스킬/에이전트 제안 |
 | `/skill-doctor:create` | 새 스킬/에이전트/규칙 생성 |
+| `/skill-doctor:checkup` | skill-doctor 자체 환경 점검 및 자동 수정 |
 
 각 스킬은 종료 시 AskUserQuestion으로 다음 단계를 추천합니다.
 
@@ -112,13 +123,14 @@ health_score = max(0, 100 - (미해결_스킬측_cause_type수 × 15) - (avg_cd_
 
 ```
 init → dashboard / suggest
-dashboard → diagnose / heal / suggest (상황별)
-diagnose → heal / report / dashboard
-heal → dashboard / diagnose(다른 스킬) / report
+dashboard → diagnose / heal / suggest (상황별, 마켓플레이스 스킬은 heal 대신 suggest)
+diagnose → heal(로컬) / suggest(마켓플레이스) / report / dashboard
+heal → dashboard / diagnose(다른 스킬) / report (마켓플레이스 스킬은 진입 차단)
 record → diagnose(CD 높을 때) / dashboard
 report → heal / diagnose / dashboard
 suggest → create(선택적) / dashboard
 create → 테스트 실행 / create(추가) / dashboard
+checkup → init / dashboard
 ```
 
 ---
@@ -130,8 +142,9 @@ create → 테스트 실행 / create(추가) / dashboard
 | 명령어 | 용도 |
 |---|---|
 | `record --file <path>` | 세션 시그널 DB 기록. CD 점수 자동 계산. 입력 파일 자동 삭제. |
-| `list [--all-projects]` | 기록된 스킬 목록 + health_score |
-| `diagnose --skill <name> [--session <id>] [--full] [--all-projects]` | 진단 데이터 JSON 출력 |
+| `list [--all-projects]` | 기록된 스킬 목록 + health_score + source + plugin_name |
+| `diagnose --skill <name> [--session <id>] [--full] [--all-projects]` | 진단 데이터 JSON 출력 (source, plugin_name 포함) |
+| `discover-marketplace [--prune]` | 설치된 마켓플레이스 플러그인 스킬 자동 발견. `--prune`으로 삭제된 플러그인 정리. |
 | `update-profile --skill <name> --health-score <N> [--resolve <cause_type>] [--dismiss <cause_type>] [--heal-tracking <json>] [--fail-heal <id>] [--confirm-heal <id>]` | 프로파일 업데이트 |
 
 ### 예시
@@ -161,6 +174,7 @@ python3 .../cli.py update-profile --skill e2e-testid --health-score 72 --dismiss
 | DB | `~/.claude/skill-doctor/skill-doctor.db` | 플러그인 재설치해도 유지 |
 | 리포트 | `~/.claude/skill-doctor/reports/` | 90일 후 자동 삭제 |
 | 임시 파일 | `~/.claude/skill-doctor/tmp/` | record 후 자동 삭제 |
+| 활성 세션 | `~/.claude/skill-doctor/active/` | Hook이 세션별 시그널 누적, Stop 시 flush |
 
 데이터는 `~/.claude/skill-doctor/`에 저장. 플러그인 업데이트/재설치 시에도 유지.
 
@@ -183,9 +197,13 @@ plugins/skill-doctor/
 │   ├── record/SKILL.md          ← /skill-doctor:record
 │   ├── report/SKILL.md          ← /skill-doctor:report
 │   ├── suggest/SKILL.md         ← /skill-doctor:suggest
-│   └── create/SKILL.md          ← /skill-doctor:create
+│   ├── create/SKILL.md          ← /skill-doctor:create
+│   └── checkup/SKILL.md         ← /skill-doctor:checkup
+├── hooks/
+│   └── hooks.json               ← 시그널 자동 수집 훅 설정
 ├── scripts/
-│   └── cli.py                   ← CLI (python3, 외부 의존성 없음)
+│   ├── cli.py                   ← CLI (python3, 외부 의존성 없음)
+│   └── signal-collector.py      ← Hook 이벤트 → 시그널 변환 스크립트
 ├── docs/
 │   ├── CLI_REFERENCE.md         ← CLI 상세 사용법
 │   ├── CREATION_GUIDE.md        ← 스킬/에이전트/규칙 생성 가이드
@@ -201,7 +219,7 @@ plugins/skill-doctor/
 
 ## 향후 확장
 
-- **Flow B**: 일반 대화에서 반복 패턴 감지 → 새 스킬 생성 제안
+- **마켓플레이스 스킬 개선 제안**: 축적된 진단 리포트를 바탕으로 외부 스킬의 개선된 로컬 버전 생성 제안
+- **Flow B**: 일반 대화에서 반복 패턴 감지 → 새 스킬 생성 제안 (suggest 스킬로 부분 구현)
 - **가중치**: 같은 에러 반복 ×1.5 등 modifier
-- **cli.py discover**: 대화 패턴 분석 서브커맨드
 - **Cross-learning**: 스킬 A에서 발견된 패턴을 유사한 스킬 B에도 선제적으로 적용 제안

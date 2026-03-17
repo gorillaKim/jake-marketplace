@@ -1,8 +1,42 @@
 # 시그널 기록 규칙
 
-스킬 실행 중 아래 이벤트 발생 시 메모리에 누적하고, 스킬 종료 시 기록한다.
+## 수집 방식 (3단계)
 
-**제외**: `skill-doctor` 플러그인 자체의 스킬(`/skill-doctor:diagnose`) 실행 시에는 시그널을 기록하지 않는다. 자기 자신을 진단하는 순환을 방지.
+skill-doctor는 세 가지 방식으로 시그널을 수집한다:
+
+| 방식 | 시그널 | 신뢰도 | 동작 |
+|------|--------|--------|------|
+| **Hook (자동)** | `tool_error`, `cancelled`, `correct` | 시스템 레벨 / best-effort | 플러그인 훅이 자동 감지. 설정 불필요 |
+| **수동 (/record)** | 모든 타입 | 높음 | 사용자가 직접 기록. 가장 정확한 데이터 |
+| **CLAUDE.md (보조)** | `redo`, `manual_fix`, `clarify`, `blocked` | best-effort | init에서 선택적 설정. Hook이 감지 못하는 시그널 보조 수집 |
+
+### Hook 기반 자동 수집 (signal-collector.py)
+
+### Hook + Agent 하이브리드 수집 (signal-collector.py)
+
+**Phase 1 — Hook이 raw 이벤트 수집** (시스템 레벨, 판단 없음):
+
+| 훅 이벤트 | 수집 내용 |
+|-----------|----------|
+| `PostToolUseFailure` | 도구명, 에러 메시지, is_interrupt — 모든 도구 실패를 raw 기록 |
+| `UserPromptSubmit` | 사용자 메시지 텍스트 — 모든 메시지를 raw 기록 |
+| `SubagentStart/Stop` | 스킬명 추적 (agent_type 필드) |
+
+raw 이벤트는 `~/.claude/skill-doctor/active/{session_id}.json`에 세션별 누적.
+
+**Phase 2 — Stop 시 Claude에게 분류 요청** (agent 레벨, 의미 판단):
+
+`Stop` 훅에서 누적된 raw 이벤트를 `additionalContext`로 Claude 컨텍스트에 주입.
+Claude가 아래 기준으로 유의미한 시그널만 판별 + cause_type 귀속:
+
+- 정상적 탐색 실패(grep 결과 없음 등) → 무시
+- 사용자 단순 대화/질문 → 무시
+- 스킬 프롬프트의 모호성/누락으로 인한 실패 → 기록
+- 유의미한 시그널 없으면 → 아무것도 안 함
+
+**Phase 3 — Claude가 DB에 기록**:
+
+판단된 시그널을 `tmp/sd-session-{ts}.json`으로 Write 후 `cli.py record`로 DB 기록.
 
 ## 이벤트 감지
 
@@ -41,34 +75,40 @@ CLI 경로: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py`
 | 명령어 | 용도 |
 |---|---|
 | `record --file <path>` | 세션 시그널을 DB에 기록. CD 점수 자동 계산. 입력 파일 자동 삭제. |
-| `list [--all-projects]` | 기록된 스킬 목록 + health_score 조회 |
-| `diagnose --skill <name> [--session <id>] [--full] [--all-projects]` | 스킬 진단 데이터 JSON 출력. --session 생략 시 최근 세션 자동 선택. |
+| `list [--all-projects]` | 기록된 스킬 목록 + health_score + source + plugin_name 조회 |
+| `diagnose --skill <name> [--session <id>] [--full] [--all-projects]` | 스킬 진단 데이터 JSON 출력 (source, plugin_name 포함). --session 생략 시 최근 세션 자동 선택. |
+| `discover-marketplace [--prune]` | 설치된 마켓플레이스 플러그인 스킬 자동 발견. --prune으로 삭제된 플러그인 정리. |
 | `update-profile --skill <name> --health-score <N>` | 프로파일 업데이트. --resolve, --dismiss, --heal-tracking, --fail-heal, --confirm-heal 옵션. |
 
 상세 사용법: `docs/CLI_REFERENCE.md` 참조.
 
-## 스킬 종료 시 기록 절차
+## 기록 절차
 
-1. Write 도구로 `~/.claude/skill-doctor/tmp/sd-session-{timestamp}.json` 생성:
+### 자동 (Hook 기반 — 기본)
+
+플러그인 훅(`hooks/hooks.json`)이 시스템 레벨에서 자동 수집:
+1. `PostToolUseFailure` → `tool_error` / `cancelled` 시그널 자동 감지
+2. `UserPromptSubmit` → `correct` best-effort 패턴 매칭
+3. `SubagentStart/Stop` → 스킬명 추적
+4. `Stop` / `SessionEnd` → 누적 시그널을 `tmp/sd-session-{ts}.json`으로 flush → `cli.py record` 자동 호출
+
+시그널이 없는 세션은 기록하지 않음 (hook은 문제가 있는 세션만 기록).
+
+### 수동 (`/skill-doctor:record`)
+
+hook으로 감지하기 어려운 시그널(`redo`, `manual_fix`, `clarify`, `blocked`)이나, 더 정확한 `cause_type`/`cause_detail`을 기록하고 싶을 때 사용.
+
+입력 JSON 형식:
 ```json
 {
   "skill": "스킬명",
+  "skill_path": "스킬 파일 경로 (선택)",
   "signals": [
     {"type": "correct", "context": "한 줄 설명", "cause_type": "ambiguous_instruction", "cause_detail": "원인"}
   ]
 }
 ```
-시그널이 없으면 `"signals": []` (빈 배열도 기록 대상 — "완벽한 실행"으로 기록됨).
 
-> **중요**: 빈 배열 기록은 "시그널이 없었다"는 **긍정적 데이터**이다. 시그널을 누락하면 안 되지만, 정말 문제 없이 실행된 경우에도 반드시 빈 배열로 기록하여 "이 세션은 정상이었다"를 명시한다. 이를 통해 health_score의 avg_cd_last_3 계산이 정확해진다.
+### 보조 (CLAUDE.md 지침 — 선택)
 
-2. Bash 실행:
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py record --file ~/.claude/skill-doctor/tmp/sd-session-{timestamp}.json
-```
-
-3. 출력의 `cd_score`가 50 이상이면:
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py diagnose --skill <스킬명>
-```
-출력된 JSON으로 `skill-doctor` 에이전트를 호출(`Agent(name="skill-doctor")`)하여 진단을 수행한다.
+`/skill-doctor:init`에서 설정 가능. hook이 감지하지 못하는 `redo`, `manual_fix` 등의 보조 수집용.

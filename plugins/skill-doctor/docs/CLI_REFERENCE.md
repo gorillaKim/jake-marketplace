@@ -36,7 +36,7 @@ python3 .../cli.py list                # 현재 프로젝트만
 python3 .../cli.py list --all-projects # 전체 프로젝트
 ```
 
-**출력**: JSON 배열 (skill, project, health_score, total_sessions, last_session)
+**출력**: JSON 배열 (skill, project, health_score, total_sessions, last_session, source, plugin_name)
 
 ---
 
@@ -51,7 +51,7 @@ python3 .../cli.py diagnose --skill e2e-testid --full                   # 전체
 python3 .../cli.py diagnose --skill e2e-testid --all-projects           # 전체 프로젝트 통합
 ```
 
-**출력**: profile + current_session + cross_session (cause_type_counts, cause_type_details, avg_cd_last_3) + heal_tracking (active, previous_heals)
+**출력**: skill, project, source, plugin_name + profile + current_session + cross_session (cause_type_counts, cause_type_details, avg_cd_last_3) + heal_tracking (active, previous_heals)
 **--session 생략**: 해당 스킬의 가장 최근 세션 자동 선택
 **--full**: 최근 5세션의 전체 signals 추가 포함
 
@@ -77,3 +77,24 @@ python3 .../cli.py update-profile --skill e2e-testid --health-score 90 --confirm
 **--confirm-heal**: 지정된 heal_id의 상태를 "confirmed"로 변경 (3세션 이상 재발 없음 확인 시)
 
 > 사용자 측 cause_type(`insufficient_context`, `user_preference`, `external_issue`)은 resolve/dismiss 대상이 아닙니다. 이들은 에스컬레이션에 포함되지 않으므로 별도 처리가 불필요합니다.
+
+---
+
+## `discover-marketplace [--prune]`
+
+설치된 마켓플레이스 플러그인에서 스킬을 자동 발견하여 DB에 등록합니다.
+
+```bash
+python3 .../cli.py discover-marketplace           # 스킬 발견 및 등록
+python3 .../cli.py discover-marketplace --prune    # + 삭제된 플러그인의 스킬 정리
+```
+
+**동작**:
+1. `~/.claude/plugins/installed_plugins.json` 읽기
+2. 각 플러그인의 `{installPath}/skills/*/SKILL.md` 스캔
+3. `skill_profiles`에 `source='marketplace'`, `plugin_name`, `skill_path` upsert
+
+**출력**: `{"discovered": N, "skills": [{"skill": "name", "plugin": "key", "project": "...", "path": "..."}]}`
+**--prune**: `installed_plugins.json`에 없는 플러그인의 marketplace 스킬을 DB에서 삭제. 추가 출력: `"pruned": N`
+
+> 마켓플레이스 스킬은 진단(diagnose)은 가능하지만, 수정(heal)은 불가합니다. 외부 플러그인은 읽기 전용이므로 리포트만 축적됩니다.

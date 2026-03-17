@@ -225,9 +225,12 @@ plugin-root/
 - [ ] `skills/<name>/SKILL.md` 경로 확인
 - [ ] frontmatter에 `name`, `description` 포함
 - [ ] description에 트리거 키워드 괄호 포함
+- [ ] `CLI 경로: python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py` 헤더 포함
 - [ ] `${CLAUDE_PLUGIN_ROOT}` 또는 `${CLAUDE_SKILL_DIR}` 사용하여 경로 참조
-- [ ] 절차를 번호 매기기로 명확하게 작성
+- [ ] 절차를 번호 매기기(`### 1.`, `### 2.`)로 명확하게 작성
 - [ ] CLI 명령어는 코드 블록으로 감싸기
+- [ ] **`## 시그널 기록` 섹션 포함** (셀프힐링 필수)
+- [ ] `## 다음 단계 추천` — AskUserQuestion으로 후속 액션 제안
 
 ### 에이전트 생성 체크리스트
 - [ ] `agents/<name>.md` 경로 확인

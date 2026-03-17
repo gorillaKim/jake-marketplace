@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS skill_profiles (
     resolved_issues TEXT DEFAULT '[]',
     dismissed_issues TEXT DEFAULT '[]',
     heal_tracking TEXT DEFAULT '[]',
+    source TEXT DEFAULT 'local',
+    plugin_name TEXT,
     PRIMARY KEY (skill, project)
 );
 """
@@ -79,6 +81,13 @@ def get_db():
         db.execute("SELECT heal_tracking FROM skill_profiles LIMIT 1")
     except sqlite3.OperationalError:
         db.execute("ALTER TABLE skill_profiles ADD COLUMN heal_tracking TEXT DEFAULT '[]'")
+        db.commit()
+    # migrate: add source and plugin_name for marketplace discovery
+    try:
+        db.execute("SELECT source FROM skill_profiles LIMIT 1")
+    except sqlite3.OperationalError:
+        db.execute("ALTER TABLE skill_profiles ADD COLUMN source TEXT DEFAULT 'local'")
+        db.execute("ALTER TABLE skill_profiles ADD COLUMN plugin_name TEXT")
         db.commit()
     return db
 
@@ -311,12 +320,24 @@ def cmd_diagnose(args):
     active_heals = [h for h in heal_tracking_raw if h.get("status") == "observing"]
     previous_heals = [h for h in heal_tracking_raw if h.get("status") == "failed"]
 
+    source = "local"
+    plugin_name = None
+    if profile_row:
+        try:
+            source = profile_row["source"] or "local"
+            plugin_name = profile_row["plugin_name"]
+        except (IndexError, KeyError):
+            pass
+
     result = {
         "skill": skill,
         "project": project or "all",
+        "source": source,
+        "plugin_name": plugin_name,
         "profile": {
             "health_score": profile_row["health_score"] if profile_row else 100,
             "last_diagnosed": profile_row["last_diagnosed"] if profile_row else None,
+            "skill_path": profile_row["skill_path"] if profile_row else None,
             "total_sessions": total,
             "resolved_issues": resolved,
             "dismissed_issues": [d["cause_type"] for d in dismissed_raw],
@@ -384,9 +405,11 @@ def _expire_dismissed(db, skill, project):
                 (json.dumps(updated), skill, project),
             )
         else:
+            # --all-projects: update only the specific row found by LIMIT 1
+            row_skill = row["skill"] if hasattr(row, "keys") else skill
             db.execute(
-                "UPDATE skill_profiles SET dismissed_issues=? WHERE skill=?",
-                (json.dumps(updated), skill),
+                "UPDATE skill_profiles SET dismissed_issues=? WHERE skill=? AND rowid=(SELECT rowid FROM skill_profiles WHERE skill=? LIMIT 1)",
+                (json.dumps(updated), skill, skill),
             )
         db.commit()
 
@@ -468,8 +491,9 @@ def cmd_update_profile(args):
                 failed_causes = t.get("cause_types", [])
                 found = True
         if not found:
-            print(json.dumps({"error": f"heal_id '{args.fail_heal}' not found"}))
+            db.commit()
             db.close()
+            print(json.dumps({"error": f"heal_id '{args.fail_heal}' not found"}))
             sys.exit(1)
         # resolved_issues에서 실패한 cause_type 제거 (재발 감지 가능하게)
         resolved = json.loads(row["resolved_issues"]) if row and row["resolved_issues"] else []
@@ -490,8 +514,9 @@ def cmd_update_profile(args):
                 t["status"] = "confirmed"
                 found = True
         if not found:
-            print(json.dumps({"error": f"heal_id '{args.confirm_heal}' not found"}))
+            db.commit()
             db.close()
+            print(json.dumps({"error": f"heal_id '{args.confirm_heal}' not found"}))
             sys.exit(1)
         db.execute(
             "UPDATE skill_profiles SET heal_tracking=? WHERE skill=? AND project=?",
@@ -512,6 +537,7 @@ def cmd_list(args):
     if project:
         rows = db.execute(
             """SELECT sp.skill, sp.project, sp.health_score, sp.last_diagnosed,
+                      sp.source, sp.plugin_name,
                       COUNT(s.id) as total_sessions,
                       MAX(s.timestamp) as last_session
                FROM skill_profiles sp
@@ -524,6 +550,7 @@ def cmd_list(args):
     else:
         rows = db.execute(
             """SELECT sp.skill, sp.project, sp.health_score, sp.last_diagnosed,
+                      sp.source, sp.plugin_name,
                       COUNT(s.id) as total_sessions,
                       MAX(s.timestamp) as last_session
                FROM skill_profiles sp
@@ -540,11 +567,89 @@ def cmd_list(args):
             "total_sessions": r["total_sessions"],
             "last_diagnosed": r["last_diagnosed"],
             "last_session": r["last_session"],
+            "source": r["source"] or "local",
+            "plugin_name": r["plugin_name"],
         }
         for r in rows
     ]
     db.close()
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+# ── discover-marketplace ───────────────────────────────────────────────────
+
+INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+
+
+def cmd_discover_marketplace(args):
+    if not INSTALLED_PLUGINS_PATH.exists():
+        print(json.dumps({"error": "installed_plugins.json not found", "discovered": 0}))
+        sys.exit(1)
+
+    with open(INSTALLED_PLUGINS_PATH) as f:
+        data = json.load(f)
+
+    db = get_db()
+    project = detect_project()
+    discovered = []
+
+    for plugin_key, installations in data.get("plugins", {}).items():
+        for inst in installations:
+            install_path = Path(inst.get("installPath", ""))
+            skills_dir = install_path / "skills"
+            if not skills_dir.is_dir():
+                continue
+            for skill_dir in skills_dir.iterdir():
+                if not skill_dir.is_dir():
+                    continue
+                skill_md = skill_dir / "SKILL.md"
+                if not skill_md.exists():
+                    continue
+                skill_name = skill_dir.name
+                skill_path = str(skill_md)
+                # project-scoped plugins → use plugin's project, else current project
+                target_project = project
+                proj_path = inst.get("projectPath")
+                if proj_path:
+                    target_project = os.path.basename(proj_path)
+
+                db.execute(
+                    """INSERT INTO skill_profiles (skill, project, skill_path, source, plugin_name)
+                       VALUES (?, ?, ?, 'marketplace', ?)
+                       ON CONFLICT(skill, project) DO UPDATE SET
+                         skill_path=excluded.skill_path,
+                         source='marketplace',
+                         plugin_name=excluded.plugin_name""",
+                    (skill_name, target_project, skill_path, plugin_key),
+                )
+                discovered.append({
+                    "skill": skill_name,
+                    "plugin": plugin_key,
+                    "project": target_project,
+                    "path": skill_path,
+                })
+
+    if args.prune:
+        # Remove marketplace skills whose plugin is no longer installed
+        installed_keys = set(data.get("plugins", {}).keys())
+        rows = db.execute(
+            "SELECT skill, project, plugin_name FROM skill_profiles WHERE source='marketplace'"
+        ).fetchall()
+        pruned = 0
+        for r in rows:
+            if r["plugin_name"] not in installed_keys:
+                db.execute(
+                    "DELETE FROM skill_profiles WHERE skill=? AND project=? AND source='marketplace'",
+                    (r["skill"], r["project"]),
+                )
+                pruned += 1
+        db.commit()
+        db.close()
+        print(json.dumps({"discovered": len(discovered), "pruned": pruned, "skills": discovered}, ensure_ascii=False, indent=2))
+    else:
+        db.commit()
+        db.close()
+        print(json.dumps({"discovered": len(discovered), "skills": discovered}, ensure_ascii=False, indent=2))
 
 
 # ── main ────────────────────────────────────────────────────────────────────
@@ -565,6 +670,9 @@ def main():
     p_list = sub.add_parser("list", help="List tracked skills")
     p_list.add_argument("--all-projects", action="store_true", default=False)
 
+    p_disc = sub.add_parser("discover-marketplace", help="Discover skills from installed marketplace plugins")
+    p_disc.add_argument("--prune", action="store_true", default=False, help="Remove skills from uninstalled plugins")
+
     p_up = sub.add_parser("update-profile", help="Update skill profile")
     p_up.add_argument("--skill", required=True)
     p_up.add_argument("--health-score", type=int, required=True)
@@ -581,6 +689,8 @@ def main():
         cmd_diagnose(args)
     elif args.command == "list":
         cmd_list(args)
+    elif args.command == "discover-marketplace":
+        cmd_discover_marketplace(args)
     elif args.command == "update-profile":
         cmd_update_profile(args)
 

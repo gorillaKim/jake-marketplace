@@ -1,6 +1,6 @@
 ---
 name: skill-doctor
-description: 스킬의 건강 상태를 크로스 세션으로 진단하고 개선 방안을 제안하는 서브에이전트. diagnose JSON을 입력받아 cause_detail 분석, 에스컬레이션 레벨 결정, 리포트 및 수정 diff를 생성합니다.
+description: 스킬의 건강 상태를 크로스 세션으로 진단하고 개선 방안을 제안하는 서브에이전트 (스킬 진단, 건강도 분석, cause_detail, 에스컬레이션, 리포트 생성, diagnose)
 model: haiku
 tools:
   - Read
@@ -99,7 +99,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py update-profile --skill "{name}" --h
 
 - level 1: 실행 명령어만
 - level 2+: 리포트 포함
-- level 3+: **diff는 생성하지 않음**. 대신 리포트에 "`/skill-doctor:heal {name}` 실행을 권장합니다" 메시지를 포함. diff 생성은 skill-healer 에이전트가 전담.
+- level 3+ (로컬 스킬): **diff는 생성하지 않음**. 대신 리포트에 "`/skill-doctor:heal {name}` 실행을 권장합니다" 메시지를 포함. diff 생성은 skill-healer 에이전트가 전담.
+- level 3+ (마켓플레이스 스킬): heal 추천 **금지**. 외부 플러그인 스킬은 수정 대상이 아님. 대신 리포트에 "외부 플러그인 스킬이므로 heal 불가. 리포트를 축적 중이며, `/skill-doctor:suggest`로 개선된 로컬 스킬 생성을 제안받을 수 있습니다." 메시지를 포함.
 - heal_tracking에 observing 중인 heal이 있고 같은 cause_type이 재발한 경우, 실행 명령어에 `--fail-heal "{heal_id}"` 포함
 - heal_tracking에 observing 중인 heal이 있고 3세션 이상 재발 없으면, 실행 명령어에 `--confirm-heal "{heal_id}"` 포함
 
