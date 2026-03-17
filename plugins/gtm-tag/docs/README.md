@@ -172,21 +172,3 @@ CSV (기획자 제공)
 | 6.1 | Group | prefix 중복 | PREFIX_COLLISION |
 | 6.2 | Group | 라우트 유효성 | ROUTE_NOT_FOUND |
 
-## skill-doctor 연동
-
-모든 스킬은 종료 시 skill-doctor 시그널을 기록합니다.
-
-```
-SD_CLI=$(ls -d ${CLAUDE_PLUGIN_ROOT}/../../skill-doctor/*/scripts/cli.py 2>/dev/null | tail -1)
-```
-
-- glob `*/`로 skill-doctor 버전을 동적 탐색 (버전 업그레이드 대응)
-- 미설치 시 AskUserQuestion으로 설치 + init 안내
-
-### 원인 귀속
-
-| 구분 | cause_type | CD 가산 |
-|------|-----------|---------|
-| 스킬 측 | ambiguous_instruction, missing_precondition, scope_exceeded, error_handling, output_mismatch | O |
-| 사용자 측 | insufficient_context, user_preference, external_issue | X |
-| 정상 | clarify | +0 |

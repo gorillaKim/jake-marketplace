@@ -234,24 +234,6 @@ flowchart TD
 
 ---
 
-## skill-doctor 연동
-
-gtm-tag의 모든 스킬은 종료 시 skill-doctor 시그널을 자동 기록합니다.
-
-```
-스킬 실행 중 이벤트 발생 → 메모리에 누적
-  ↓
-스킬 종료 → Write(~/.claude/skill-doctor/tmp/sd-session-{timestamp}.json)
-  ↓
-skill-doctor CLI record → DB 기록, CD 점수 계산
-  ↓
-CD ≥ 50 → diagnose → 자동 진단
-```
-
-skill-doctor가 미설치된 경우, 설치 여부를 질문하고 `/skill-doctor:init`까지 안내합니다.
-
----
-
 ## 플러그인 구조
 
 ```

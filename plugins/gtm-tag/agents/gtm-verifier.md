@@ -1,7 +1,7 @@
 ---
 name: gtm-verifier
 description: GTM 이벤트 태깅 완전성을 검증하고 커버리지 문서를 생성하는 서브에이전트.
-model: opus
+model: sonnet
 tools:
   - Read
   - Glob
