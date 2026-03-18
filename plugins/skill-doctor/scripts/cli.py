@@ -207,7 +207,7 @@ def cmd_record(args):
     except Exception:
         pass
 
-    print(json.dumps({"session_id": session_id, "cd_score": cd_score}))
+    print(json.dumps({"session_id": session_id, "cd_score": cd_score, "skill": skill}))
 
 
 # ── diagnose ────────────────────────────────────────────────────────────────
@@ -304,6 +304,10 @@ def cmd_diagnose(args):
 
     cause_type_counts = {k: len(v) for k, v in cause_counts.items()}
 
+    # Compute escalation level deterministically (not left to LLM)
+    max_cause_count = max(cause_type_counts.values()) if cause_type_counts else 0
+    escalation_level = min(4, max_cause_count)
+
     if project:
         recent = db.execute(
             "SELECT cd_score FROM sessions WHERE skill_name=? AND project=? ORDER BY timestamp DESC LIMIT 3",
@@ -320,6 +324,59 @@ def cmd_diagnose(args):
     active_heals = [h for h in heal_tracking_raw if h.get("status") == "observing"]
     previous_heals = [h for h in heal_tracking_raw if h.get("status") == "failed"]
 
+    # Auto heal actions: deterministic confirm/fail for observing heals
+    auto_heal_actions = []
+    for heal in active_heals:
+        applied_at = heal.get("applied_at", "")
+        if not applied_at:
+            continue
+        # Count sessions since heal was applied
+        if project:
+            sessions_since = db.execute(
+                "SELECT COUNT(*) FROM sessions WHERE skill_name=? AND project=? AND timestamp > ?",
+                (skill, project, applied_at),
+            ).fetchone()[0]
+        else:
+            sessions_since = db.execute(
+                "SELECT COUNT(*) FROM sessions WHERE skill_name=? AND timestamp > ?",
+                (skill, applied_at),
+            ).fetchone()[0]
+        heal["sessions_since_heal"] = sessions_since
+
+        # Check recurrence: any signal with heal's cause_types after applied_at?
+        heal_cause_types = heal.get("cause_types", [])
+        recurred = False
+        if heal_cause_types:
+            placeholders = ",".join("?" * len(heal_cause_types))
+            if project:
+                recur_row = db.execute(
+                    f"""SELECT COUNT(*) FROM signals sig JOIN sessions s ON sig.session_id = s.id
+                        WHERE s.skill_name=? AND s.project=? AND s.timestamp > ?
+                        AND sig.cause_type IN ({placeholders})""",
+                    (skill, project, applied_at, *heal_cause_types),
+                ).fetchone()
+            else:
+                recur_row = db.execute(
+                    f"""SELECT COUNT(*) FROM signals sig JOIN sessions s ON sig.session_id = s.id
+                        WHERE s.skill_name=? AND s.timestamp > ?
+                        AND sig.cause_type IN ({placeholders})""",
+                    (skill, applied_at, *heal_cause_types),
+                ).fetchone()
+            recurred = recur_row[0] > 0
+
+        heal_id = heal.get("heal_id", "")
+        verify_after = heal.get("verify_after_sessions", 3)
+        if recurred and heal_id:
+            auto_heal_actions.append({
+                "action": "fail-heal", "heal_id": heal_id,
+                "reason": f"cause_type 재발 감지 (applied_at 이후)",
+            })
+        elif sessions_since >= verify_after and heal_id:
+            auto_heal_actions.append({
+                "action": "confirm-heal", "heal_id": heal_id,
+                "reason": f"{sessions_since}세션 경과, 재발 없음",
+            })
+
     source = "local"
     plugin_name = None
     if profile_row:
@@ -334,6 +391,8 @@ def cmd_diagnose(args):
         "project": project or "all",
         "source": source,
         "plugin_name": plugin_name,
+        "escalation_level": escalation_level,
+        "auto_heal_actions": auto_heal_actions,
         "profile": {
             "health_score": profile_row["health_score"] if profile_row else 100,
             "last_diagnosed": profile_row["last_diagnosed"] if profile_row else None,
@@ -358,7 +417,7 @@ def cmd_diagnose(args):
         },
     }
 
-    if args.full:
+    if args.full or active_heals:
         if project:
             recent_sessions = db.execute(
                 "SELECT * FROM sessions WHERE skill_name=? AND project=? ORDER BY timestamp DESC LIMIT 5",

@@ -18,9 +18,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py list
 
 ### 2. 진단 데이터 추출
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py diagnose --skill <name>
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py diagnose --skill <name> --full
 ```
---session 생략하면 최근 세션 자동 선택.
+--session 생략하면 최근 세션 자동 선택. --full은 항상 포함한다 (heal 검증에 필요).
 
 ### 3. 스킬 파일 읽기 (구조 진단용)
 
@@ -38,18 +38,32 @@ Agent 도구로 플러그인 에이전트 `skill-doctor`를 호출한다 (diagno
 
 > 스킬 파일을 찾지 못한 경우 스킬 파일 부분을 제외하고 호출.
 
-### 5. 결과 처리
+### 5. auto_heal_actions 자동 실행
+
+diagnose JSON 출력에 `auto_heal_actions` 배열이 있으면, 에이전트 호출 **전에** 자동 실행한다:
+
+```
+for each action in auto_heal_actions:
+  if action.action == "confirm-heal":
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py update-profile --skill <name> --health-score <current> --confirm-heal <action.heal_id>
+  if action.action == "fail-heal":
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cli.py update-profile --skill <name> --health-score <current> --fail-heal <action.heal_id>
+```
+
+실행 결과를 사용자에게 간략히 알린다 (예: "heal-abc 확인됨: 3세션 경과 재발 없음").
+
+### 6. 결과 처리
 - skill-doctor 출력의 리포트를 사용자에게 표시
 - "실행 명령어" 섹션의 cli.py 명령어를 Bash로 실행
 - 리포트를 `~/.claude/skill-doctor/reports/`에 저장
 
 **소스 유형에 따른 분기:**
-- **로컬 스킬** (`source: local`): level 3+일 때 `/skill-doctor:heal` 실행 추천
+- **로컬 스킬** (`source: local`): `escalation_level` 3+일 때 `/skill-doctor:heal` 실행 추천
 - **마켓플레이스 스킬** (`source: marketplace`): heal 불가 (외부 플러그인은 수정 대상이 아님). 리포트만 저장하고, 추후 해당 데이터를 기반으로 개선된 로컬 스킬 생성을 제안할 수 있음을 안내
 
-소스 유형은 diagnose JSON 출력의 `source` 필드로 확인한다.
+소스 유형은 diagnose JSON 출력의 `source` 필드, 에스컬레이션 레벨은 `escalation_level` 필드로 확인한다.
 
-### 6. 다음 단계 추천
+### 7. 다음 단계 추천
 
 진단 결과에 따라 AskUserQuestion 도구로 다음 단계를 제안:
 
@@ -106,5 +120,6 @@ questions:
 
 ## 시그널 기록
 
-> **자동 수집 (Hook+Agent)**: 도구 실패, 사용자 메시지 등 raw 이벤트를 Hook이 수집하고, Stop 시 Claude가 유의미한 시그널만 판별하여 DB에 기록합니다.
+> **자동 수집 (Hook+Agent)**: 도구 실패, 사용자 메시지 등 raw 이벤트를 Hook이 수집하고, 스킬 완료 시 Claude가 유의미한 시그널만 판별하여 DB에 기록합니다.
+> **자동 체이닝**: record → diagnose → heal이 cd_score/escalation_level 기반으로 자동 트리거됩니다.
 > **수동 보조**: redo, manual_fix, clarify, blocked는 hook으로 감지하기 어려우므로, 발생 시 `/skill-doctor:record`로 수동 기록하면 데이터 품질이 향상됩니다.

@@ -100,7 +100,7 @@ def handle_user_prompt_submit(data, session):
 
 
 def handle_post_tool_use(data, session, session_id):
-    """PostToolUse — Skill completion triggers Phase 2; other tools get soft error detection."""
+    """PostToolUse — Skill completion triggers Phase 2; Bash output triggers auto-chaining."""
     tool_name = data.get("tool_name", "")
 
     # Skill completed → Phase 2: inject additionalContext for Claude to classify
@@ -119,6 +119,21 @@ def handle_post_tool_use(data, session, session_id):
             sys.exit(0)
         cleanup_session(session_id)
         output_continue()
+
+    # Auto-chaining: detect cli.py output in Bash results
+    if tool_name == "Bash":
+        tool_response = data.get("tool_response", {})
+        stdout = tool_response.get("stdout", "") if isinstance(tool_response, dict) else str(tool_response or "")
+        chaining_context = detect_chaining_trigger(stdout)
+        if chaining_context:
+            print(json.dumps({
+                "continue": True,
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": chaining_context,
+                }
+            }))
+            sys.exit(0)
 
     # Not in a skill session — skip soft error detection
     if not session.get("skill"):
@@ -186,6 +201,60 @@ def build_classification_context(skill, raw_events):
 - 사용자의 단순 대화나 질문은 correction이 아닙니다 — 무시하세요.
 - 스킬 프롬프트의 모호성/누락으로 인한 실패만 스킬 측 cause_type으로 기록하세요.
 - 유의미한 시그널이 없으면 아무것도 하지 마세요."""
+
+
+# ── Auto-chaining: detect CLI output and trigger next pipeline step ────────
+
+
+def detect_chaining_trigger(stdout):
+    """Detect cli.py record/diagnose output and return next-step context, or None."""
+    if not stdout or len(stdout) < 10:
+        return None
+
+    # Pattern 1: cli.py record output → trigger diagnose
+    # Output format: {"session_id": "...", "cd_score": N, "skill": "..."}
+    if '"session_id"' in stdout and '"cd_score"' in stdout:
+        try:
+            data = json.loads(stdout.strip())
+            cd_score = data.get("cd_score", 0)
+            skill = data.get("skill", "")
+            if cd_score >= 30 and skill:
+                return build_diagnose_trigger(skill, cd_score)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Pattern 2: cli.py diagnose output → trigger heal
+    # Output contains cross_session.cause_type_counts + source + escalation_level
+    if '"cross_session"' in stdout and '"cause_type_counts"' in stdout:
+        try:
+            data = json.loads(stdout.strip())
+            escalation = data.get("escalation_level", 0)
+            source = data.get("source", "local")
+            skill = data.get("skill", "")
+            if escalation >= 3 and source == "local" and skill:
+                return build_heal_trigger(skill, escalation)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return None
+
+
+def build_diagnose_trigger(skill_name, cd_score):
+    return f"""[skill-doctor 자동 체이닝] cd_score={cd_score} (≥30) 감지.
+스킬 '{skill_name}'에 대해 진단을 실행하세요:
+
+```bash
+python3 ${{CLAUDE_PLUGIN_ROOT}}/scripts/cli.py diagnose --skill {skill_name} --full
+```
+
+진단 결과를 확인하고, escalation_level이 3 이상이면 /skill-doctor:heal을 실행하세요."""
+
+
+def build_heal_trigger(skill_name, escalation_level):
+    return f"""[skill-doctor 자동 체이닝] 스킬 '{skill_name}'의 escalation_level={escalation_level} (≥3).
+반복되는 문제가 감지되었으므로 자동 치유를 실행하세요: /skill-doctor:heal
+
+heal 스킬이 diff를 제안하면 사용자에게 승인을 요청하세요."""
 
 
 # ── Phase 3: Stop — safety net (auto-sweep) ──────────────────────────────
