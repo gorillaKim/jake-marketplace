@@ -2,14 +2,16 @@
 """skill-doctor signal collector — hybrid hook + agent signal detection.
 
 Phase 1 (hooks): Accumulate raw events in active/{session_id}.json
-Phase 2 (Stop hook): Inject raw events into Claude's context via additionalContext
+Phase 2 (PostToolUse Skill): Inject raw events into Claude's context via additionalContext
 Phase 3 (agent): Claude classifies signals, attributes cause_type, and records to DB
 
 Usage (called by hooks, not directly):
-  echo '{"hook_event_name":"PostToolUseFailure",...}' | python3 signal-collector.py
+  echo '{"hook_event_name":"PostToolUse",...}' | python3 signal-collector.py
 """
 
 import json
+import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -17,7 +19,7 @@ from pathlib import Path
 DATA_DIR = Path.home() / ".claude" / "skill-doctor"
 ACTIVE_DIR = DATA_DIR / "active"
 
-# ── Phase 1: Raw event accumulation ────────────────────────────────────────
+# ── Session management ────────────────────────────────────────────────────
 
 
 def get_session_file(session_id):
@@ -46,6 +48,20 @@ def cleanup_session(session_id):
         f.unlink()
     except OSError:
         pass
+
+
+# ── Phase 1: Raw event accumulation ──────────────────────────────────────
+
+
+def handle_pre_tool_use(data, session):
+    """PreToolUse(Skill) — start skill session."""
+    tool_name = data.get("tool_name", "")
+    if tool_name == "Skill":
+        skill_name = data.get("tool_input", {}).get("skill", "")
+        if skill_name:
+            session["skill"] = skill_name
+            session["raw_events"] = []
+            session["started_at"] = time.time()
 
 
 def handle_post_tool_use_failure(data, session):
@@ -83,49 +99,50 @@ def handle_user_prompt_submit(data, session):
     })
 
 
-def handle_subagent_start(data, session):
-    agent_type = data.get("agent_type", "")
-    if agent_type:
-        session["skill"] = agent_type
+def handle_post_tool_use(data, session, session_id):
+    """PostToolUse — Skill completion triggers Phase 2; other tools get soft error detection."""
+    tool_name = data.get("tool_name", "")
 
-
-def handle_subagent_stop(data, session):
-    agent_type = data.get("agent_type", "")
-    if agent_type and not session.get("skill"):
-        session["skill"] = agent_type
-
-
-# ── Phase 2: Stop — inject raw events into Claude context ──────────────────
-
-
-def handle_stop(data, session, session_id):
-    """On Stop: inject accumulated raw events as additionalContext for Claude to classify."""
-    skill = session.get("skill")
-    raw_events = session.get("raw_events", [])
-
-    # No skill identified = not a skill execution (general conversation) — discard
-    if not skill:
+    # Skill completed → Phase 2: inject additionalContext for Claude to classify
+    if tool_name == "Skill" and session.get("skill"):
+        raw_events = session.get("raw_events", [])
+        if raw_events:
+            context = build_classification_context(session["skill"], raw_events)
+            cleanup_session(session_id)
+            print(json.dumps({
+                "continue": True,
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": context,
+                }
+            }))
+            sys.exit(0)
         cleanup_session(session_id)
-        return output_continue()
+        output_continue()
 
-    # Nothing to review
-    if not raw_events:
-        cleanup_session(session_id)
-        return output_continue()
+    # Not in a skill session — skip soft error detection
+    if not session.get("skill"):
+        return
 
-    # Build context for Claude to classify
-    context = build_classification_context(skill, raw_events)
-    cleanup_session(session_id)
+    # Soft error detection: tool succeeded (exit 0) but output contains error patterns
+    tool_response = data.get("tool_response", {})
+    output_text = ""
+    if isinstance(tool_response, dict):
+        output_text = tool_response.get("stdout", "") or tool_response.get("stderr", "")
+    elif isinstance(tool_response, str):
+        output_text = tool_response
 
-    # Return additionalContext — injected as system-reminder into Claude's context
-    print(json.dumps({
-        "continue": True,
-        "hookSpecificOutput": {
-            "hookEventName": "Stop",
-            "additionalContext": context,
-        }
-    }))
-    sys.exit(0)
+    if output_text and re.search(r'(?i)\b(error|exception|traceback|failed)\b', output_text):
+        session["raw_events"].append({
+            "event": "tool_failure",
+            "tool": tool_name,
+            "error": output_text[:300],
+            "is_interrupt": False,
+            "ts": time.time(),
+        })
+
+
+# ── Phase 2: Classification context builder ──────────────────────────────
 
 
 def build_classification_context(skill, raw_events):
@@ -143,6 +160,7 @@ def build_classification_context(skill, raw_events):
             event_summary.append(f"  {i}. [USER_MSG] \"{ev['text'][:100]}\"")
 
     events_text = "\n".join(event_summary)
+    ts = int(time.time())
 
     return f"""[skill-doctor] 이 세션에서 아래 이벤트가 감지되었습니다.
 스킬: {skill_label}
@@ -150,7 +168,7 @@ def build_classification_context(skill, raw_events):
 {events_text}
 
 위 이벤트 중 **스킬 품질과 관련된 유의미한 시그널**이 있다면, 아래 JSON을 Write 도구로 저장해주세요.
-경로: ~/.claude/skill-doctor/tmp/sd-session-{int(time.time())}.json
+경로: ~/.claude/skill-doctor/tmp/sd-session-{ts}.json
 
 ```json
 {{
@@ -170,13 +188,34 @@ def build_classification_context(skill, raw_events):
 - 유의미한 시그널이 없으면 아무것도 하지 마세요."""
 
 
+# ── Phase 3: Stop — safety net (auto-sweep) ──────────────────────────────
+
+
+def handle_stop(data, session, session_id):
+    """On Stop: sweep any unrecorded signal files in tmp/."""
+    tmp_dir = DATA_DIR / "tmp"
+    if tmp_dir.exists():
+        cli_path = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        if cli_path:
+            cli_path = Path(cli_path) / "scripts" / "cli.py"
+            for f in tmp_dir.glob("sd-session-*.json"):
+                try:
+                    os.system(f'python3 "{cli_path}" record --file "{f}"')
+                except OSError:
+                    pass
+    cleanup_session(session_id)
+
+
+# ── Output helpers ────────────────────────────────────────────────────────
+
+
 def output_continue():
     """Default passthrough output."""
     print(json.dumps({"continue": True, "suppressOutput": True}))
     sys.exit(0)
 
 
-# ── Main ───────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────
 
 
 def main():
@@ -192,7 +231,15 @@ def main():
     session_id = data.get("session_id", "unknown")
     session = load_session(session_id)
 
-    if event == "PostToolUseFailure":
+    if event == "PreToolUse":
+        handle_pre_tool_use(data, session)
+        save_session(session_id, session)
+
+    elif event == "PostToolUse":
+        handle_post_tool_use(data, session, session_id)
+        save_session(session_id, session)
+
+    elif event == "PostToolUseFailure":
         handle_post_tool_use_failure(data, session)
         save_session(session_id, session)
 
@@ -200,19 +247,10 @@ def main():
         handle_user_prompt_submit(data, session)
         save_session(session_id, session)
 
-    elif event == "SubagentStart":
-        handle_subagent_start(data, session)
-        save_session(session_id, session)
-
-    elif event == "SubagentStop":
-        handle_subagent_stop(data, session)
-        save_session(session_id, session)
-
     elif event == "Stop":
         handle_stop(data, session, session_id)
 
     elif event == "SessionEnd":
-        # SessionEnd — just cleanup, no context injection possible
         cleanup_session(session_id)
 
     output_continue()
