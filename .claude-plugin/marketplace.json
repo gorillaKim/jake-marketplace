@@ -22,6 +22,13 @@
       "description": "GA4 이벤트 CSV → gtm-tracker 이벤트 정의 + trackEvent 자동 삽입",
       "version": "0.1.0",
       "category": "developer-tools"
+    },
+    {
+      "name": "obsidian-nexus",
+      "source": "./plugins/obsidian-nexus",
+      "description": "프로젝트 분석 기반 문서 자동 생성 및 관리. obs-nexus CLI 연동으로 하이브리드 검색, 태그 관리, 위키링크 자동화 지원",
+      "version": "0.1.0",
+      "category": "developer-tools"
     }
   ]
 }

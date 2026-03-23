@@ -14,6 +14,7 @@
 |---------|------|------------|------|
 | `skill-doctor` | 스킬 건강 상태를 크로스 세션으로 진단하고 Hook+Agent 하이브리드로 자동 개선 | `/skill-doctor:dashboard` `/skill-doctor:diagnose` `/skill-doctor:heal` | 0.1.0 |
 | `gtm-tag` | GA4 이벤트 CSV → gtm-tracker 이벤트 정의 + trackEvent 자동 삽입 | `/gtm-tag:init` `/gtm-tag:tag` | 0.1.0 |
+| `obsidian-nexus` | 프로젝트 분석 기반 문서 자동 생성 및 관리. obs-nexus CLI 연동으로 하이브리드 검색, 태그 관리, 위키링크 자동화 지원 | `/obs-nexus:onboard` `/obs-nexus:librarian` `/obs-nexus:doctor` | 0.1.0 |
 
 ### skill-doctor
 
@@ -28,12 +29,25 @@
 
 GA4 이벤트 정의 CSV를 분석하여 gtm-tracker 기반 이벤트 정의 코드와 trackEvent 호출을 자동 생성하는 플러그인.
 
+### obsidian-nexus
+
+프로젝트 코드베이스를 분석하여 필요한 문서를 자동 생성하고 관리하는 플러그인.
+
+- **onboard**: 프로젝트 분석 → 인터뷰 → `docs/` 문서 세트 자동 생성
+- **librarian**: obs-nexus CLI 기반 문서 검색/관리/발견성 개선
+- **doctor**: 문서 상태 진단 (누락, 오래됨, 불일치)
+- **session-devlog**: 세션 대화 → devlog 및 문서 자동 생성
+- **add**: 개별 문서 추가 (devlog, decision 등)
+
+> **의존성**: `obs-nexus` CLI 필요 — `brew tap gorilla-kim/tap && brew install obs-nexus`
+
 ## 플러그인 설치 / 업데이트 / 제거
 
 ```bash
 # 설치
 /plugin install skill-doctor@jake-plugins
 /plugin install gtm-tag@jake-plugins
+/plugin install obsidian-nexus@jake-plugins
 
 # 업데이트
 /plugin marketplace update
