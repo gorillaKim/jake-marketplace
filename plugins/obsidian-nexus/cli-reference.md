@@ -45,6 +45,14 @@ obs-nexus search "<query>" --project <ID> --mode hybrid --limit 5 --format json
 # 모드: keyword | vector | hybrid
 ```
 
+## 랭킹
+
+```bash
+# 인기 문서 순위 (조회수 + 백링크 기반)
+obs-nexus ranking --format json
+obs-nexus ranking --project <ID> --limit 10 --format json
+```
+
 ## 문서 조회
 
 ```bash
@@ -88,7 +96,7 @@ obs-nexus index <PROJECT> --full
 
 ## 그래프 탐색
 
-CLI와 MCP 모두 지원.
+CLI와 MCP 모두 지원 (v0.5.9+).
 
 ### CLI
 
