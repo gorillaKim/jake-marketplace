@@ -55,6 +55,13 @@ obs-nexus 연동 시 `obs-nexus doc list <PROJECT> --format json`으로 확인:
 - 미사용 태그 (어떤 문서에도 없는 태그)
 - 태그 없는 문서
 
+### 6. 깨진 링크 (Broken Links)
+
+- **MCP 모드**: 각 문서에 `nexus_get_links` 호출 → `"resolved": false`인 링크 수집
+- **CLI 모드**: `obs-nexus doc links <PROJECT> <PATH> --format json` 후 `resolved: false` 필터
+- 미해결 위키링크 (`[[표시 이름]]` 형식)는 `nexus_find_path` 탐색에서 무시됨
+- 수정 방법: `[[표시 이름]]` → `[[architecture/database-schema]]` 처럼 **파일 경로 기반**으로 변경
+
 ## 실행 절차
 
 → CLI 명령어: `$CLAUDE_PLUGIN_ROOT/cli-reference.md` 참조
@@ -79,6 +86,7 @@ Health Score 계산:
 - 코드-문서 불일치: 항목당 -10점
 - 필수 문서 누락: 문서당 -8점
 - 동의어 태그 중복: 쌍당 -2점
+- 깨진 링크 (resolved: false): 링크당 -1점
 
 ```
 📋 문서 상태 진단 결과
@@ -111,6 +119,12 @@ Health Score 계산:
 
 --- 태그 일관성 ---
 ⚠️ 동의어 태그 발견: "config" (2개 문서) ↔ "configuration" (1개 문서)
+
+--- 깨진 링크 ---
+⚠️ docs/overview/project-overview.md
+   - [[04-데이터베이스-스키마]] → resolve 실패
+   - [[03-MCP-도구-레퍼런스]] → resolve 실패
+   수정 방법: [[표시 이름]] → [[architecture/database-schema]] 형식으로 변경
 
 자동 수정 가능한 항목: 3개
 ```
@@ -147,6 +161,8 @@ obs-nexus index <PROJECT>  # 재인덱싱
 - 코드-문서 불일치 → `/obs-nexus:add` 또는 수동 수정 안내
 - 필수 문서 누락 → `/obs-nexus:onboard` 안내
 - 오래된 문서 → 수동 검토 권장
+- 깨진 링크 → 위키링크를 파일 경로 기반으로 수동 수정 안내
+  (예: `[[04-데이터베이스-스키마]]` → `[[architecture/database-schema]]`)
 
 ## 규칙
 

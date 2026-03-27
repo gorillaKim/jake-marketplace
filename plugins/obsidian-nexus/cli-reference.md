@@ -86,6 +86,27 @@ obs-nexus index --all
 obs-nexus index <PROJECT> --full
 ```
 
+## 그래프 탐색 (MCP 전용)
+
+> ⚠️ 아래 도구는 CLI 동등 명령 없음 — MCP 모드에서만 사용 가능
+
+```
+# 멀티홉 클러스터 탐색 (앞/역방향, depth 기본 2, 최대 5)
+nexus_get_cluster(project, path, depth=2)
+  반환: file_path, title, distance, tags, snippet
+
+# 두 문서 간 최단 정방향 경로 (BFS, max 6 hops)
+# resolve된 링크([[파일경로]] 형식)만 탐색 — 표시 이름 링크는 무시됨
+nexus_find_path(project, from, to)
+  반환: 경로 배열 또는 null (경로 없음)
+
+# 관련 문서 추천 (RRF: 링크 거리 + 태그 중복 합산)
+nexus_find_related(project, path, k=10)
+  반환: 상위 k개 문서 + signals(["link", "tag"])
+```
+
+**사용 전 확인**: `nexus_get_links`로 `"resolved": false` 비율 확인 후 `nexus_find_path` 호출
+
 ## 기타
 
 ```bash
