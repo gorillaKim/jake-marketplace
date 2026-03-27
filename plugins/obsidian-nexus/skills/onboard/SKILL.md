@@ -42,9 +42,22 @@ docs/
 
 ## 실행 절차
 
-### Step 0: obs-nexus 감지
+### Step 0: MCP / CLI 감지
 
-→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > nexus 감지" 절차를 따릅니다.
+→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > MCP / CLI / 설치 안내 3단계 감지" 절차를 따릅니다.
+
+### Step 0.5: on-config.json 초기화
+
+`docs/on-config.json`이 없으면 자동 생성합니다:
+
+1. `docs/` 폴더가 없으면 먼저 생성
+2. `docs/on-config.json` 존재 여부 확인
+3. 없으면 프로젝트 디렉토리명(basename)으로 생성:
+   ```json
+   {"name": "{project_name}"}
+   ```
+4. 생성 시 알림: `on-config.json 생성됨 → docs/on-config.json`
+5. 이미 존재하면 덮어쓰지 않고 진행
 
 ### Step 1: 기존 문서 정리 (--cleanup 플래그 시)
 
@@ -106,6 +119,7 @@ Agent(
 문서 온보딩 완료!
 
 생성된 문서:
+  docs/on-config.json ✅ (신규 생성 시)
   docs/overview/project-summary.md ✅
   docs/overview/tech-stack.md ✅
   docs/overview/glossary.md ✅
@@ -124,3 +138,4 @@ Agent(
 - frontmatter의 tags, aliases, created/updated 는 반드시 완전하게 채움
 - 아키텍처 문서에는 Mermaid 다이어그램 적극 활용
 - 문서 말미에 `## 관련 문서` 섹션에 위키링크 포함
+- `on-config.json`이 이미 존재하면 덮어쓰지 않음

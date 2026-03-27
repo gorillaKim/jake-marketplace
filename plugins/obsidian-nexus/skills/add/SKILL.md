@@ -36,9 +36,9 @@ description: 개별 문서를 템플릿 기반으로 추가하는 스킬. devlog
 
 ## 실행 절차
 
-### Step 1: obs-nexus 감지 및 프로젝트 ID 확인
+### Step 1: MCP / CLI 감지 및 프로젝트 ID 확인
 
-→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > nexus 감지" 절차를 따릅니다.
+→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > MCP / CLI / 설치 안내 3단계 감지" 절차를 따릅니다.
 
 ### Step 2: 기존 문서 확인
 
@@ -46,10 +46,12 @@ obs-nexus 설치 시: `obs-nexus search "<title>" --project <ID> --mode hybrid -
 
 미설치 시: Glob으로 docs/ 스캔하여 유사 파일명 확인
 
-**기존 파일이 있으면**: 사용자에게 알림
+**기존 파일이 있으면**: AskUserQuestion으로 확인
 ```
-"docs/devlog/2026-03-20-search-reranking.md" 가 이미 존재합니다.
-내용을 업데이트할까요, 새 파일로 생성할까요?
+AskUserQuestion(
+  question: '"{파일경로}"가 이미 존재합니다. 어떻게 할까요?',
+  options: ["기존 파일 업데이트", "새 파일로 생성"]
+)
 ```
 
 ### Step 3: 문서 생성

@@ -101,20 +101,28 @@ obs-nexus onboard
 
 ## 공통 패턴
 
-### 시작 시: obs-nexus 감지 + 프로젝트 ID 확인
+### 시작 시: MCP / CLI / 설치 안내 3단계 감지
 
-```bash
-which obs-nexus && obs-nexus project list --format json
-```
+**Step 1: MCP 연결 확인 (최우선)**
+`nexus_list_projects` MCP 도구 호출 시도
+→ 성공: `MODE=mcp`, 반환된 프로젝트 목록에서 현재 경로와 가장 가까운 프로젝트 ID 확인
+→ 실패 (도구 없음/오류): Step 2로
 
-cwd 경로와 가장 가까운 항목을 프로젝트 ID로 사용합니다.
+**Step 2: CLI 확인 (폴백)**
+`which obs-nexus && obs-nexus project list --format json`
+→ 성공: `MODE=cli`, 프로젝트 ID 확인
+→ 실패: Step 3으로
 
-미설치 시:
-```
-obs-nexus가 설치되어 있지 않습니다.
-  brew tap gorilla-kim/tap && brew install obs-nexus
-파일시스템 기반(Glob/Grep)으로 진행할까요?
-```
+**Step 3: 설치 안내 (둘 다 없음)**
+사용자에게 안내 후 종료:
+> obs-nexus MCP 서버와 CLI가 모두 감지되지 않았습니다.
+> 설치: `brew tap gorilla-kim/tap && brew install obs-nexus`
+> MCP 설정: claude_desktop_config.json에 nexus MCP 서버 추가
+> 설치 후 다시 실행해 주세요.
+
+**MODE 변수 활용**:
+- `MODE=mcp`: 모든 검색/조회에 MCP 도구 사용 (`nexus_search`, `nexus_get_section` 등)
+- `MODE=cli`: `obs-nexus` CLI 명령어 사용
 
 ### 문서 생성/수정 후 후처리
 

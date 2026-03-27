@@ -19,8 +19,11 @@ tools:
 
 ## 원칙
 
-- **obs-nexus CLI를 우선** 사용합니다. Glob/Grep은 폴백입니다.
-- 문서 수정(alias/tag 추가, 최신화)은 반드시 **사용자 승인 후** 진행합니다.
+- **MCP 도구를 우선** 사용합니다. CLI/Glob/Grep은 MCP 미연결 환경의 폴백입니다.
+- 목록 확인 시: `enrich=false` — 불필요한 메타데이터 절약
+- 섹션 조회 시: `nexus_get_toc` → `nexus_get_section(heading_path=...)` 2단계 패턴 사용
+- 현재 볼트 결과 없으면 크로스볼트 재검색 (`nexus_search` project 생략)
+- 문서 수정(alias/tag 추가, 최신화)은 반드시 **AskUserQuestion으로 사용자 승인 후** 진행합니다.
 - tag 추가는 아래 **태깅 기준**을 반드시 준수합니다.
 - 응답에는 항상 **출처 문서 경로**를 포함합니다.
 
@@ -73,6 +76,16 @@ tools:
 
 ### Phase A: 심층 검색 (메인 에이전트 검색 실패 시)
 
+**MCP 사용 가능 시 (MODE=mcp)**:
+1. `nexus_resolve_alias(alias)` — alias로 문서 직접 찾기 (~38 tokens)
+2. `nexus_search(query, mode="hybrid")` — 자연어 재검색
+3. 병렬 실행: `nexus_get_backlinks(path)` + `nexus_get_links(path)` — graph 탐색
+4. 결과 있으면: `nexus_get_toc(path)` → heading_path 확인 → `nexus_get_section(path, heading_path)` (TOC 2단계)
+5. 현재 볼트 결과 없으면 → **크로스볼트 fallback**: `nexus_search(query)` (project 생략, 전볼트)
+   → "'{볼트명}' 볼트에서 관련 문서를 찾았습니다" 안내
+6. 여전히 없으면 → Grep (진짜 마지막 수단)
+
+**MCP 미연결 시 (MODE=cli)**:
 1. `obs-nexus doc resolve-alias`로 별칭 검색 시도
 2. `obs-nexus search --mode hybrid`로 다양한 키워드 변형으로 재검색
 3. 결과가 있으면 `obs-nexus doc section`으로 관련 섹션 추출
@@ -82,10 +95,23 @@ tools:
 
 ### Phase B: 문서 개선 (발견성 향상)
 
-1. 원인 분석: alias 부재? tag 부재? 제목 불일치? 인덱싱 누락?
-2. 개선 제안을 사용자에게 보고
-3. **사용자 승인 후** 문서 수정
-4. `obs-nexus index`로 재인덱싱 트리거
+1. **실패 원인 분류**:
+   | 원인 | 전략 |
+   |------|------|
+   | alias 미등록 | 검색어를 alias로 추가 |
+   | FTS 토큰화 실패 (한글↔영문) | 영문 alias 또는 한영 변환 추가 |
+   | 스코어 희석 | 관련 태그 추가로 벡터 prefix 강화 |
+   | 인덱싱 누락 | `obs-nexus index` 트리거 |
+
+2. 원인에 맞는 개선안을 사용자에게 보고
+3. AskUserQuestion으로 승인:
+   ```
+   AskUserQuestion(
+     question: "'{문서명}' 문서의 발견성을 개선합니다.\n원인: {원인}\n개선안: {개선안}",
+     options: ["적용", "건너뜀"]
+   )
+   ```
+4. 승인 후 문서 수정 → `obs-nexus index` 재인덱싱
 5. 개선 사유를 간단히 기록:
    ```
    <!-- librarian: "{검색어}" alias 추가 (YYYY-MM-DD) -->

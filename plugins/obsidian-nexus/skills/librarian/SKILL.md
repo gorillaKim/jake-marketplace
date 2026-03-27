@@ -26,24 +26,26 @@ obs-nexus CLI를 활용한 문서 탐색 및 관리 스킬입니다.
 
 ## 실행 절차
 
-### Step 0: nexus 감지
+### Step 0: MCP / CLI 감지
 
-```bash
-which obs-nexus && obs-nexus project list --format json
-```
-
-미설치 시: 설치 안내 후 Glob/Grep 폴백으로 진행
+→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > MCP / CLI / 설치 안내 3단계 감지" 절차를 따릅니다.
 
 ### Step 1: 직접 검색 (서브에이전트 불필요)
 
-obs-nexus CLI로 직접 검색합니다:
+Step 0에서 확인한 MODE에 따라 검색합니다:
+
+**MODE=mcp**:
+- `nexus_search(query, project, mode="hybrid", limit=5)` 직접 호출
+- 결과 있으면 `nexus_get_toc(path)` → `nexus_get_section(path, heading_path)` (TOC 2단계 패턴)
+- 목록만 확인할 때는 `enrich=false, limit=3` 으로 토큰 절약
+
+**MODE=cli**:
 ```bash
 obs-nexus search "<질의>" --project <ID> --mode hybrid --limit 5 --format json
 ```
+- 결과 있으면 `obs-nexus doc section`으로 관련 섹션 추출
 
-결과가 있으면:
-- `obs-nexus doc section`으로 관련 섹션 추출
-- 사용자에게 직접 전달 → **완료**
+결과를 사용자에게 직접 전달 → **완료**
 
 ### Step 2: 서브에이전트 스폰 (검색 실패 또는 문서 관리 필요 시)
 
@@ -112,8 +114,9 @@ Agent(
 
 ## 규칙
 
-- 단순 검색은 obs-nexus CLI 직접 호출 (서브에이전트 불필요)
+- 단순 검색은 MCP 도구 또는 CLI 직접 호출 (서브에이전트 불필요)
 - 서브에이전트는 검색 실패, 문서 개선/최신화/생성 시에만 스폰
-- 문서 수정/생성은 반드시 사용자 승인 후 진행
+- 문서 수정/생성 전 반드시 AskUserQuestion으로 사용자 승인
 - 문서 생성 시 `$CLAUDE_PLUGIN_ROOT/templates/frontmatter-guide.md`를 따름
 - 최신화 검사는 기술 문서(#spec, #guide, #api, #architecture 등)에만 실행
+- 목록 확인 단계: `enrich=false` 로 불필요한 메타데이터 절약

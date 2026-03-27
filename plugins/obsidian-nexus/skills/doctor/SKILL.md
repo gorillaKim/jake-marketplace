@@ -59,13 +59,14 @@ obs-nexus 연동 시 `obs-nexus doc list <PROJECT> --format json`으로 확인:
 
 → CLI 명령어: `$CLAUDE_PLUGIN_ROOT/cli-reference.md` 참조
 
-### Step 1: obs-nexus 감지
+### Step 1: MCP / CLI 감지
 
-`$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > nexus 감지" 절차를 따릅니다.
+→ `$CLAUDE_PLUGIN_ROOT/cli-reference.md` — "공통 패턴 > MCP / CLI / 설치 안내 3단계 감지" 절차를 따릅니다.
 
 ### Step 2: 문서 스캔
 
-**obs-nexus 설치 시:** `obs-nexus doc list`, `obs-nexus doc meta` 사용
+**MODE=mcp:** `nexus_search(enrich=false)`, `nexus_get_metadata` 사용 (목록 확인 시 enrich=false로 토큰 절약)
+**MODE=cli:** `obs-nexus doc list`, `obs-nexus doc meta` 사용
 
 **미설치 시:** Glob으로 `docs/**/*.md` 스캔, Grep으로 frontmatter 파싱
 
@@ -112,7 +113,15 @@ Health Score 계산:
 ⚠️ 동의어 태그 발견: "config" (2개 문서) ↔ "configuration" (1개 문서)
 
 자동 수정 가능한 항목: 3개
-/obs-nexus:doctor --fix 로 자동 수정할까요?
+```
+
+진단 후 AskUserQuestion으로 확인:
+
+```
+AskUserQuestion(
+  question: "자동 수정 가능한 항목이 {N}개 있습니다. 진행할까요?\n\n{항목 목록}",
+  options: ["자동 수정 진행", "수동으로 처리"]
+)
 ```
 
 ### Step 4: 자동 수정 (--fix 모드)
@@ -121,7 +130,13 @@ Health Score 계산:
 
 1. **frontmatter 보완**: 누락된 aliases, tags 추가
 2. **updated 날짜 수정**: 잘못된 날짜 보정
-3. **동의어 태그 통합**: 하나로 통합 (사용자 선택)
+3. **동의어 태그 통합**: AskUserQuestion으로 선택
+   ```
+   AskUserQuestion(
+     question: "동의어 태그를 하나로 통합합니다. 어떤 태그로 통일할까요?\n\n{tag_a} ({N}개 문서) ↔ {tag_b} ({M}개 문서)",
+     options: ["{tag_a}로 통합", "{tag_b}로 통합", "건너뜀"]
+   )
+   ```
 
 수정 후:
 ```bash
