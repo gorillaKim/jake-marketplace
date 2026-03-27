@@ -32,14 +32,34 @@ obs-nexus CLI를 활용한 문서 탐색 및 관리 스킬입니다.
 
 ### Step 1: 직접 검색 (서브에이전트 불필요)
 
-Step 0에서 확인한 MODE에 따라 검색합니다:
+Step 0에서 확인한 MODE에 따라 검색합니다.
+
+**탐색 전략 우선순위**:
+1. 특정 문서 경로를 알고 있다면 → `graph related` 먼저 (링크 구조 + 태그 기반, 관계 탐색에 최적)
+2. 키워드로 문서를 특정하기 어렵다면 → `search` (fallback)
 
 **MODE=mcp**:
-- `nexus_search(query, project, mode="hybrid", limit=5)` 직접 호출
+
+_경로 아는 경우 (graph 우선)_:
+- `nexus_find_related(project, path, k=10)` 직접 호출
+- 필요 시 `nexus_get_cluster(project, path, depth=2)` 로 클러스터 확장
+- 결과 있으면 `nexus_get_section(path, heading_path)` 로 섹션 추출
+
+_키워드 검색 (fallback)_:
+- `nexus_search(query, project, mode="hybrid", limit=5)` 호출
 - 결과 있으면 `nexus_get_toc(path)` → `nexus_get_section(path, heading_path)` (TOC 2단계 패턴)
 - 목록만 확인할 때는 `enrich=false, limit=3` 으로 토큰 절약
 
 **MODE=cli**:
+
+_경로 아는 경우 (graph 우선)_:
+```bash
+obs-nexus graph related <PROJECT> "<PATH>" --format json
+# 필요 시 클러스터 확장
+obs-nexus graph cluster <PROJECT> "<PATH>" --depth 2 --format json
+```
+
+_키워드 검색 (fallback)_:
 ```bash
 obs-nexus search "<질의>" --project <ID> --mode hybrid --limit 5 --format json
 ```
