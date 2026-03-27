@@ -45,9 +45,12 @@ _경로 아는 경우 (graph 우선)_:
 - 필요 시 `nexus_get_cluster(project, path, depth=2)` 로 클러스터 확장
 - 결과 있으면 `nexus_get_section(path, heading_path)` 로 섹션 추출
 
-_키워드 검색 (fallback)_:
-- `nexus_search(query, project, mode="hybrid", limit=5)` 호출
-- 결과 있으면 `nexus_get_toc(path)` → `nexus_get_section(path, heading_path)` (TOC 2단계 패턴)
+_키워드 검색 → graph 확장 (2단계 필수)_:
+1. `nexus_search(query, project, mode="hybrid", limit=5)` 호출
+2. 결과에서 가장 관련성 높은 문서 경로를 추출
+3. **자동으로** `nexus_find_related(project, path, k=10)` 호출하여 연관 문서 확장
+4. search 결과 + graph related 결과를 합쳐서 사용자에게 전달
+- 섹션이 필요하면 `nexus_get_toc(path)` → `nexus_get_section(path, heading_path)` (TOC 2단계 패턴)
 - 목록만 확인할 때는 `enrich=false, limit=3` 으로 토큰 절약
 
 **MODE=cli**:
@@ -59,11 +62,15 @@ obs-nexus graph related <PROJECT> "<PATH>" --format json
 obs-nexus graph cluster <PROJECT> "<PATH>" --depth 2 --format json
 ```
 
-_키워드 검색 (fallback)_:
+_키워드 검색 → graph 확장 (2단계 필수)_:
 ```bash
+# 1단계: 키워드 검색으로 경로 파악
 obs-nexus search "<질의>" --project <ID> --mode hybrid --limit 5 --format json
+# 2단계: 검색 결과의 상위 문서 경로로 graph related 자동 실행
+obs-nexus graph related <PROJECT> "<검색결과_상위_경로>" --format json
 ```
-- 결과 있으면 `obs-nexus doc section`으로 관련 섹션 추출
+- search 결과 + graph related 결과를 합쳐서 사용자에게 전달
+- 섹션이 필요하면 `obs-nexus doc section`으로 관련 섹션 추출
 
 결과를 사용자에게 직접 전달 → **완료**
 
