@@ -110,6 +110,11 @@ obs-nexus doc list <PROJECT> --format json
 3. **obs-nexus 연동 시**: `obs-nexus doc list`로 Obsidian 볼트 기존 문서 전수 조사, 태그 분포 파악
 4. **기술 스택 식별**: package.json, Cargo.toml, requirements.txt 등에서 추출
 5. **공개 API/인터페이스 식별**: CLI 명령어, MCP 도구, REST 엔드포인트 등
+6. **specs/ 후보 감지**: 다음 중 하나라도 해당하면 specs/ 문서 추천
+   - TypeScript interface/type이 Props, ApiResponse 등 공개 계약 형태인 컴포넌트/모듈
+   - Props가 5개 이상이거나 복잡한 상태 관리가 있는 컴포넌트
+   - REST API 엔드포인트, CLI args, MCP tool 정의가 있는 모듈
+   - `specs/` 디렉토리가 이미 존재하지만 일부 로직에 스펙 문서가 없는 경우
 
 ### Phase 2: 갭 분석 리포트
 
@@ -139,6 +144,9 @@ obs-nexus doc list <PROJECT> --format json
 
   [context/] 비즈니스 컨텍스트
   [ ] product-context.md — 프로덕트 배경
+
+  [specs/] 로직/컴포넌트 기술 명세
+  [ ] {LogicName}/{LogicName}.spec.md — Props/API 인터페이스 + 기능 요구사항 + 제약사항 + 성공기준
 ```
 
 ### Phase 3: 인터뷰

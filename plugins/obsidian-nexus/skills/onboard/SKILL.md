@@ -37,7 +37,11 @@ docs/
 │   ├── common-tasks.md
 │   └── release.md
 ├── devlog/            # 개발 일지 (상시 축적)
-└── context/           # 비즈니스 컨텍스트
+├── context/           # 비즈니스 컨텍스트
+└── specs/             # 로직/컴포넌트 기술 명세 (프로젝트 루트 기준, 핵심 컴포넌트 발견 시 생성)
+    └── {LogicName}/
+        ├── {LogicName}.spec.md
+        └── {LogicName}.prompt.md
 ```
 
 ## 실행 절차
