@@ -120,7 +120,21 @@ tags: {선택된 태그 목록}",
 )
 ```
 
-### ⑥ writer 실행
+### ⑥-a 종합 문서 저장 위치 확인 (멀티 프로젝트인 경우만, AskUser #3)
+
+2개 이상 프로젝트가 선택된 경우, writer 호출 전에 반드시 사용자에게 묻습니다:
+
+```
+AskUserQuestion(
+  question: "종합 회고 문서(W##-summary.md)를 어느 프로젝트에 저장할까요?\n\n{프로젝트 목록 (번호 + 이름)}",
+  options: ["{project-1}", "{project-2}", ..., "저장 안 함"]
+)
+```
+
+→ 선택된 프로젝트의 vault 경로를 `summary_output_path`로 사용합니다.
+→ "저장 안 함" 선택 시: 종합 문서 생성 생략.
+
+### ⑥-b writer 실행
 
 gatherer 결과를 모아 writer를 호출합니다:
 
@@ -138,9 +152,9 @@ today: {YYYY-MM-DD}",
 )
 ```
 
-멀티 프로젝트이면 종합 문서용 `summary_output_path` + `all_gathered_data` 추가.
+멀티 프로젝트이면 `summary_output_path` (⑥-a에서 사용자가 선택한 경로) + `all_gathered_data` 추가.
 
-### ⑦ 액션 아이템 처리 (AskUser #3)
+### ⑦ 액션 아이템 처리 (AskUser #4)
 
 writer 결과에서 액션 아이템이 있으면:
 
@@ -168,7 +182,7 @@ AskUserQuestion(
 
 ## 규칙
 
-- AskUser는 최대 3회 (②프로젝트, ④날짜, ⑦액션아이템)
+- AskUser는 최대 4회 (②프로젝트, ④날짜, ⑥-a종합문서저장위치(멀티프로젝트만), ⑦액션아이템)
 - 모델 선택은 CLI 인자 `--model`로만 받음 (인터뷰에서 묻지 않음, 기본 sonnet)
 - 추가 태그 선택도 CLI 인자 `--tags`로만 받음 (기본: decision,devlog,idea)
 - 멀티 프로젝트 일부가 멱등성으로 스킵돼도 나머지는 계속 진행
