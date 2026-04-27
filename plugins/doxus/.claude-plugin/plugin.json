@@ -1,0 +1,9 @@
+{
+  "name": "doxus",
+  "description": "프로젝트 분석 기반 문서 자동 생성 및 관리 플러그인. doxus 검색 엔진과 연동하여 코드베이스를 분석하고 필요한 문서를 카테고리별로 생성합니다. 하이브리드 검색, 태그 관리, 세션 기반 devlog 자동 생성을 지원합니다.",
+  "version": "0.1.0",
+  "author": {
+    "name": "jake",
+    "email": "yhkim@madup.com"
+  }
+}

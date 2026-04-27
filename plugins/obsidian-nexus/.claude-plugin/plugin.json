@@ -1,9 +1,0 @@
-{
-  "name": "obsidian-nexus",
-  "description": "프로젝트 분석 기반 문서 자동 생성 및 관리 플러그인. 코드베이스를 분석하여 필요한 문서를 카테고리별로 생성하고, 기존 문서 검색/관리/진단을 통합 제공합니다. nexus CLI 연동으로 하이브리드 검색, 태그 관리, 위키링크 자동화를 지원합니다.",
-  "version": "0.1.0",
-  "author": {
-    "name": "jake",
-    "email": "yhkim@madup.com"
-  }
-}
