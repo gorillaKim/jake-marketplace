@@ -36,6 +36,13 @@
       "description": "프로젝트 분석 기반 문서 자동 생성 및 관리 플러그인. doxus 검색 엔진과 연동하여 코드베이스를 분석하고 필요한 문서를 카테고리별로 생성합니다. 하이브리드 검색, 태그 관리, 세션 기반 devlog 자동 생성을 지원합니다.",
       "version": "0.1.0",
       "category": "developer-tools"
+    },
+    {
+      "name": "engram-orchestrator",
+      "source": "./plugins/engram-orchestrator",
+      "description": "Engram MCP 위에서 동작하는 이슈 분석/리딩/처리 에이전트 오케스트레이션. analyzer가 작업을 이슈/태스크/blocks 링킹으로 분할하고, leader가 ready 큐를 worker에게 분배하며 stalled 이슈를 감시한다. intake/work-journaling 스킬이 작업 요청과 작업 기록 흐름을 표준화한다.",
+      "version": "0.1.0",
+      "category": "developer-tools"
     }
   ]
 }
