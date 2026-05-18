@@ -38,7 +38,54 @@ main@<sessionShortId>-issue<issueId>
 
 메인 에이전트가 단일 actor 로 전 단계 수행. v0.4.0 Hybrid 패턴의 worker/leader 분리가 한 actor 안으로 압축된 형태.
 
-### Step A — Pre-work: 이슈 등록 + 점유
+### Step A — 진입 분기 (continue vs new)
+
+호출 받은 시점에 사용자가 `issue_id` 를 명시했는지 확인:
+
+- **명시함** → **Step A.continue** (이어 작업)
+- **명시 안 함** → **Step A.new** (새 이슈 등록)
+
+---
+
+#### Step A.continue — 이어 작업 (이전 다른 agent 가 만든/처리하던 이슈)
+
+worker 의 Step 0~1 절차와 동일하게 **반드시 다음 5개 read 호출을 순서대로** 수행. 단일 actor 라도 기존 흔적은 명시적으로 검토해야 안전:
+
+```
+1. note_list(issue_id=N, note_type="comment", include_resolved=false)
+2. note_list(issue_id=N, note_type="caveat", include_resolved=false)
+3. session_restore(project_key)                            # 광역 caveat
+4. issue_get(id=N, include_tasks=true, include_notes=true) # description + 모든 task + 모든 note
+5. history_for(entity_type="issue", entity_id=N)           # 이전 agent 들의 작업 흔적
+```
+
+**상태별 분기**:
+
+| `issue.status` | `issue.assigned_agent` | 행동 |
+|--------------|----------------------|------|
+| `required` | — | analyzer 가 ready 로 올려야 함 → 사용자에게 보고 후 종료 |
+| `ready` | null | `issue_claim(N, agent_id="main@<sess>-issue<N>")` → Step B 진입 |
+| `working` | == self (이전 본인) | `issue_release(ready)` 후 재 claim, 또는 사용자 확인 후 그대로 진행 |
+| `working` | != self (다른 agent) | **다른 워커 점유 중**. claim 시도 금지. `history_by_agent(<해당 agent>)` 로 정말 일하는지 alongside check. 사용자에게 보고 후 종료 (필요 시 사용자가 `issue_release(force=true, agent_id="user")` 로 강제 회수) |
+| `demo` / `finished` / `cancelled` | — | 작업 불가. 사용자에게 보고 후 종료 |
+
+**질문성 코멘트 처리**: `"Q:" 접두어`, `"?" 종결`, 의문문 발견 시 즉시 답변:
+```
+note_add(issue_id=N, note_type="comment", author="agent", agent_id=<self>,
+         summary="A: <답변>", detail=<상세>)
+note_resolve(<원본 노트 id>)
+```
+
+**기존 task / note 검토 의무**:
+- `status="required"` task 의 title 점검 → 이어 처리할 next task 결정.
+- 최신 `decision` / `discovery` / `blocker_detail` note 검토 → 이전 agent 의 결정/발견 인지.
+- 영향 주는 caveat 가 있으면 우선 처리/우회 전략 수립.
+
+검토 후 claim 가능 판정이면 → Step B 진입 (코드 작업).
+
+---
+
+#### Step A.new — Pre-work: 이슈 등록 + 점유
 
 ```
 # 1) project_key 결정 (analyzer 절차)

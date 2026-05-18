@@ -1,7 +1,7 @@
 {
   "name": "engram-orchestrator",
   "description": "Engram MCP v0.3+ 위에서 동작하는 이슈 분석/리딩/처리 에이전트 오케스트레이션. Hybrid 패턴(v0.4.0): worker = pure executor (코드 작업 + note 만), leader = state machine driver (claim → spawn → evidence 자체 검증 → release). worker 의 mcp fake call 위험을 물리적으로 차단한다. analyzer 가 작업을 이슈/태스크/blocks 로 분할하고, leader 가 ready 큐를 worker 에게 분배하며 stalled 이슈를 AskUserQuestion 으로 처리한다.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "jake",
     "email": "yhkim@madup.com"

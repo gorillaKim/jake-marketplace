@@ -71,6 +71,27 @@ note_add(issue_id, note_type=discovery|decision|blocker_detail|caveat|reference,
 
 새 task 발견 시 `task_insert_after`. task 완료 시 **내부 finished 목록에 task_id 만 적어둠** — `task_update` 호출 금지.
 
+### Step 2.5 — Incoming Comment 체크 (매 task 진입 직전 1회, v0.4.1)
+
+worker 가 작업 중 leader 가 추가한 `Q: stalled` 같은 질문 코멘트를 놓치지 않도록, **매 task 진입 직전 1회** (또는 한 task 가 5분 이상 걸리면 중간 1회) 다음을 호출:
+
+```python
+new_comments = note_list(issue_id=N, note_type="comment", include_resolved=false)
+for c in new_comments:
+    if c.summary.startswith("Q: stalled") or "아직 작업 중" in c.summary:
+        note_add(
+            issue_id=N,
+            note_type="comment", author="agent", agent_id=<self>,
+            summary=f"A: 작업 중, 현재 task #<id> 진행 중",
+            detail=f"<현재 어느 단계인지 짧게>"
+        )
+        note_resolve(c.id)
+```
+
+**체크 빈도**: 매 task 진입 직전 1회. 너무 자주 호출하면 토큰 낭비 — task 사이 호출이 충분.
+
+**한계 (Claude Code 동기 모델)**: worker spawn 1회 안에서만 응답 가능. spawn 끝난 워커는 다음 leader 사이클에 재 spawn 돼야 응답 가능. engram 측 SSE 가 들어오기 전엔 사용자 답변이 주된 경로.
+
 ### Step 3 — Demo Gate 자체 수집
 
 ```

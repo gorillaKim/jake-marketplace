@@ -192,17 +192,70 @@ note_add(issue_id=N, note_type="caveat", agent_id=engram-leader@<sess>,
 issue_release(id=N, agent_id=worker_agent_id, transition_to="ready")
 ```
 
-### 4) 정체 감시 (monitor 모드, 또는 dispatch 사이클 끝)
+### 4) 정체 감시 (monitor 모드 또는 dispatch 사이클 끝) — 2단계 escalation
 
 ```
 stalled_issues({ project_key, threshold_minutes: 10 })
 ```
 
-이후 v0.3.0 과 동일:
-1. 중복 caveat 확인 → 없으면 caveat 추가.
-2. `history_by_agent` 로 진짜 죽었는지 다른 이슈 처리 중인지 점검.
-3. `AskUserQuestion` 으로 release/handoff/그대로 액션 받기.
-4. release 선택 시 `issue_release(force=true, agent_id=engram-leader@...)` 가능.
+#### 단계 1 — 1차 검출 (stalled 후 10분): 질문 코멘트
+
+반환된 각 stalled 이슈에 대해:
+
+1. **중복 질문 확인** — `note_list(issue_id=N, note_type="comment", include_resolved=false)` 에서 이미 `summary` 가 `"Q: stalled"` 로 시작하는 comment 가 있으면 단계 2 로 넘어감.
+2. **자체 1차 점검** — `history_by_agent(agent_id=<해당 워커>, limit=5)`:
+   - 다른 이슈에서 활동 흔적 발견 → 워커가 살아서 다른 일 중. 질문 코멘트 추가하지 말고 caveat 만 (`"stalled <N>m — agent active elsewhere"`) + escalation 보류.
+   - 아무 활동 없음 → 진짜 정체 가능성. 단계 1.3 진행.
+3. **질문 코멘트 추가** (caveat 가 아닌 `comment` — 응답 가능 형태):
+
+```python
+note_add(
+  issue_id=N,
+  note_type="comment",
+  author="agent",
+  agent_id="engram-leader@<sess>",
+  summary=f"Q: stalled {minutes}m — 아직 작업 중인가요?",
+  detail=(
+    f"issue #{N} 이 working 상태로 {minutes}분 정체.\n"
+    f"점유 워커: {worker_agent_id}\n"
+    f"마지막 활동: {last_activity_ts}\n\n"
+    "응답 protocol:\n"
+    "  1) 작업 중이면 — 워커 또는 사용자가 답변 comment + note_resolve(이 노트):\n"
+    "       note_add(issue_id=N, note_type='comment', author='agent',\n"
+    "                agent_id=<worker_agent_id>,\n"
+    "                summary='A: 작업 중, 현재 task #X 진행', detail=...)\n"
+    "       note_resolve(이 노트 id)\n"
+    "  2) 중단이면 — 사용자가 데스크톱에서 답변 또는 release.\n"
+    "  3) 미응답 +20분 (총 30분) 후 leader 가 사용자에게 AskUserQuestion → release 강제."
+  )
+)
+```
+
+4. 사용자에게 짧게 보고: "#<N> 14분 정체 — 워커에게 질문 코멘트 추가 (응답 대기 30분)".
+
+#### 단계 2 — 응답 시한 만료 (stalled 후 총 30분): AskUserQuestion
+
+다음 leader 사이클 (예: `/loop 10m`) 마다 미해결 stalled-question 코멘트 확인:
+
+1. `note_list(issue_id=N, note_type="comment", include_resolved=false)` 에서 `summary` 가 `"Q: stalled"` 로 시작하는 노트 추출.
+2. 각 노트의 `note_get` 으로 `created_at` 확인 → 현재 시각과 차이 ≥ 20분이면 escalation 발동.
+3. `AskUserQuestion` 으로 사용자 액션:
+   ```
+   "#<N> '<title>' 가 30분+ 정체. 점유 워커: <worker_agent_id>. 어떻게 처리할까요?"
+     - release (ready 환원) — 다른 워커가 픽업
+     - handoff — 새 워커로 재시도 (UC4 모델 분기 가능)
+     - 그대로 두기
+   ```
+4. **release**: `issue_release(N, agent_id=<worker_agent_id>, transition_to="ready")`. 권한 거부 시 `issue_release(N, force=true, agent_id="engram-leader@<sess>", transition_to="ready")` 강제 회수.
+5. **handoff**: 위 release → 새 `worker_agent_id` 로 spawn 사이클 재시작.
+
+#### 응답 가능 actor 매트릭스
+
+| Actor | 답변 방법 | 비고 |
+|-------|----------|------|
+| 점유 워커 (claude/codex/gemini) | `note_add(comment, agent_id=<self>)` + `note_resolve` | 다음 leader 사이클에서 같은 이슈로 재 spawn 됐을 때만 가능. work-journaling Step 2 의 incoming check 가 트리거. |
+| 사용자 (데스크톱) | `note_add(comment, author="user")` + `note_resolve` 또는 직접 release | 가장 흔한 응답자 |
+| leader 본인 | 단계 1.2 의 `history_by_agent` 점검에서 agent 가 다른 이슈에서 활동 중 확인 → 질문 코멘트 추가하지 않고 caveat 만 | escalation 보류 |
 
 ### 5) 보고
 
