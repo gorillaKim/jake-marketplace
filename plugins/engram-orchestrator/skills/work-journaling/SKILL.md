@@ -1,145 +1,193 @@
 ---
 name: work-journaling
-description: Engram 이슈를 처리하는 작업자가 작업 전·중·후에 코멘트/노트/상태를 기록하는 표준 절차. v0.3.0 부터 issue_claim/issue_release 와 agent_id 의무 포함. engram-worker spawn 시 자동 로드. 트리거 — "engram 작업", "issue 처리", "워커 시작", "이슈 작업", "작업 기록", "journaling".
+description: Engram 이슈를 처리하는 worker + leader 가 따르는 표준 절차. v0.4.0 부터 worker = 코드 작업 + note 직접 / leader = 상태 전이 + evidence 자체 검증으로 호출 권한 분리. WORKER_RESULT 양식으로 인계. 트리거 — "engram 작업", "issue 처리", "워커 시작", "이슈 작업", "작업 기록", "journaling".
 ---
 
-# Work Journaling
+# Work Journaling (v0.4.0 — Hybrid)
 
 ## 목적
 
-Engram 이슈를 처리하는 동안 **무엇을 / 누가 / 왜 / 어디서 막혔는지** 가 영구적으로 남도록 한다.
-이 스킬을 따르면 사용자가 demo 단계에서 검토할 때 변경 의도와 검증 포인트를 한 화면에서 볼 수 있다.
+Engram 이슈 처리 중 **무엇을 / 누가 / 왜 / 어디서 막혔는지** 가 영구적으로 남도록 한다.
+v0.4.0 부터 **worker 와 leader 의 호출 권한이 분리** 되어 sub-agent fake call 위험을 물리적으로 차단한다.
 
-## 적용 대상
+## 호출 주체 매트릭스
 
-- `engram-worker` 가 자기 이슈를 처리하는 모든 시점.
-- (선택) 사용자가 직접 한 이슈를 처리할 때도 권장.
+| 호출 | worker | leader |
+|------|--------|--------|
+| `issue_claim` (점유) | ❌ | ✅ (spawn 전) |
+| `issue_release` (전이) | ❌ | ✅ (검증 후) |
+| `issue_update` (상태) | ❌ | ✅ (예외 시) |
+| `issue_link` (의존성) | ❌ | ✅ (worker 가 blocker 보고하면) |
+| `task_update(finished)` | ❌ | ✅ (WORKER_RESULT 받아 일괄) |
+| `task_create` | ❌ (analyzer 만) | ❌ (analyzer 만) |
+| `task_insert_after` (새 task 발견) | ✅ | ❌ |
+| `task_test_check_bulk` | ✅ | ✅ |
+| `note_add(comment)` (질문 답변) | ✅ | ❌ |
+| `note_add(discovery)` | ✅ | ❌ |
+| `note_add(decision)` | ✅ | ❌ |
+| `note_add(blocker_detail)` | ✅ | ✅ (leader 도 worker 보고 받아 추가) |
+| `note_add(caveat)` (실시간 주의) | ✅ | ✅ (검증 실패 / stalled 경고) |
+| `note_add(context)` (검토 가이드) | ❌ | ✅ (WORKER_RESULT 받아) |
+| `note_resolve` (질문 종결) | ✅ | ❌ |
+| `session_end` | ❌ | ✅ (사이클 끝) |
 
-## agent_id 의무 (필수)
-
-모든 `mcp__engram__*` 호출에 `agent_id` 를 명시한다. worker 의 경우 호출자가 주입한 값을 그대로 사용:
-
-```
-<model>@<sessionShortId>-issue<issueId>
-```
-
-agent_id 가 없으면 `history_by_agent` 가 작동하지 못해 멀티 에이전트 추적이 사라진다.
-
-## 절대 순서 (Step 0 → Step 6)
-
-이 순서를 어기면 work-journaling 위반. 각 단계는 mcp 호출 응답을 본인 응답에 인용해 증거를 남긴다.
+## worker 절대 순서 (Step 0 → Step 4)
 
 ### Step 0 — 코멘트/caveat 검토 (mcp 첫 호출, 스킵 금지)
 
 ```
-note_list(issue_id=<issue_id>, note_type="comment", include_resolved=false)
-note_list(issue_id=<issue_id>, note_type="caveat", include_resolved=false)
+note_list(issue_id, note_type="comment", include_resolved=false)
+note_list(issue_id, note_type="caveat", include_resolved=false)
 ```
 
-- 코멘트 상위 10건 검토. 질문성("Q:" 접두어, "?" 종결, "어떻게/왜/언제/어디" 의문문) 발견 시:
-  ```
-  note_add(issue_id, note_type="comment", author="agent", agent_id=<self>,
-           summary="A: <답변>", detail=<상세>)
-  note_resolve(<원본 질문 노트 id>)
-  ```
-- 답변 불가 시 사용자에게 보고 후 작업 보류.
-- 작업에 영향 주는 caveat 가 있으면 우선 처리/우회 전략 결정.
+질문성 코멘트 답변:
+```
+note_add(issue_id, note_type="comment", author="agent", agent_id=<self>,
+         summary="A: <답변>", detail=...)
+note_resolve(<원본 노트 id>)
+```
 
-> **이 단계는 worker 의 가장 첫 mcp 호출**. issue_claim 보다 먼저.
+답변 불가 시 작업 보류 → `WORKER_RESULT.status="blocked"`.
 
-### Step 1 — 컨텍스트 적재
+### Step 1 — 컨텍스트 적재 + 점유 확인
 
 ```
 session_restore(project_key)
 issue_get(id=<issue_id>, include_tasks=true, include_notes=true)
 ```
 
-- `issue.assigned_agent` 가 본인이 아닌 다른 값이면 즉시 종료.
-- `session_restore.active_caveats` 광역 caveat 검토.
+**필수**: `issue.assigned_agent == <self>` 확인. 다르면 `WORKER_RESULT.status="abandoned"` 즉시 보고 후 종료.
 
-### Step 2 — 점유 (issue_claim, CAS)
+`session_restore.active_caveats` 광역 caveat 검토.
 
-```
-issue_claim(id=<issue_id>, agent_id=<self>)
-```
+### Step 2 — 코드 작업
 
-응답 분기:
-- **성공**: `status="working"`, `assigned_agent=<self>`. 다음 단계.
-- **거부**: `"already held by another agent"` → 즉시 종료. retry 금지.
-
-⚠️ `issue_update(status="working")` 직접 호출 금지. 반드시 `issue_claim` 사용.
-
-### Step 3 — 작업 중 기록
-
-발생 유형별 `note_add` (author="agent", agent_id=<self>):
-
-| 발생 | note_type | 예시 summary |
-|------|-----------|--------------|
-| 의도된 설계 결정 | `decision` | "캐시 키에 user_id 포함 — multi-tenant 격리" |
-| 작업 중 발견한 사실 | `discovery` | "기존 X 모듈이 이미 Y 기능을 가짐" |
-| 블로커 (다른 이슈 대기) | `blocker_detail` | "결제 모듈 #128 완료 후 가능" |
-| 같은 실수 반복 방지 | `caveat` | "이 RPC 는 1초 timeout 이 너무 짧음" |
-| 외부 참조 | `reference` | "RFC 7234 §5.2" |
-
-task 진행:
-```
-task_update(id=<task_id>, status="finished", agent_id=<self>)
-task_insert_after(prev_id=<id>, title=...)
-```
-
-### Step 4 — Demo Gate (자체 검증, 필수)
-
-demo 전이 전 모두 통과:
-
-1. `task_list(issue_id, status="required")` 결과 = 빈 배열.
-2. `task_test_list(issue_id)` 항목이 있으면 모두 `checked`.
-3. 코드 변경이 있었으면 `Bash("git diff --name-only HEAD")` 결과 1개 이상.
-
-미통과 시 demo 전이 금지. caveat note 로 사유 기록 후 Step 6 (release ready) 으로 안전 복귀.
-
-### Step 5 — Demo 진입 (issue_release)
-
-자체 검증 통과 후:
+각 task 별 실제 작업 (Read/Edit/Write/Bash). 발견/결정 발생 시 즉시:
 
 ```
-note_add(issue_id, note_type="context", author="agent", agent_id=<self>,
-         summary="검토 가이드: <한 줄 핵심>",
-         detail="확인 항목:\n- ...\n변경 파일:\n- <path> (이유)\n수동 확인:\n- <칸반 X 동작>\n남은 한계:\n- <있다면>\n증거:\n- <git diff/test 결과 또는 mcp 호출 응답 인용>")
-
-issue_release(id=<issue_id>, agent_id=<self>, transition_to="demo")
+note_add(issue_id, note_type=discovery|decision|blocker_detail|caveat|reference,
+         author="agent", agent_id=<self>, summary=..., detail=...)
 ```
 
-⚠️ `issue_update(status="demo")` 직접 호출 금지. 반드시 `issue_release` 사용 (ownership 해제 + 전이 동시).
+새 task 발견 시 `task_insert_after`. task 완료 시 **내부 finished 목록에 task_id 만 적어둠** — `task_update` 호출 금지.
 
-### Step 6 — 세션 정리 (자기 claim 안전 회수)
+### Step 3 — Demo Gate 자체 수집
 
 ```
-1. issue_get(id=<issue_id>) → assigned_agent, status 확인
-2. 만약 assigned_agent == <self> 이고 status == "working" 이면:
-     issue_release(id=<issue_id>, agent_id=<self>, transition_to="ready")
-     note_add(issue_id, note_type="caveat", author="agent", agent_id=<self>,
-              summary="비정상 종료 — ready 환원", detail=<마지막 상태/이유>)
-3. session_end(project_key)
+task_list(issue_id, status="required")  → 남은 task 수
+task_test_list(issue_id)                → checked 여부
+Bash("git diff --name-only HEAD")       → 변경 파일
 ```
 
-정상 demo 진입의 경우 Step 5 에서 이미 release 됐으므로 (2) 는 no-op.
+결과를 WORKER_RESULT.evidence 에 인용.
+
+### Step 4 — WORKER_RESULT 보고 (마지막 출력)
+
+마지막 응답의 마지막 코드 블록으로 YAML 출력:
+
+```yaml
+WORKER_RESULT:
+  status: demo_ready  # | blocked | abandoned
+  agent_id: <self>
+  issue_id: <N>
+  tasks_finished: [11, 12]
+  tasks_new: []
+  evidence:
+    required_tasks_remaining: 0
+    test_check_pass: true
+    git_diff_files: ["src/...", "tests/..."]
+  context_note:
+    summary: "검토 가이드: <한 줄>"
+    detail: |
+      확인 항목: ...
+      변경 파일: ...
+      수동 확인: ...
+      남은 한계: ...
+      증거: task_list=[], test_pass=true, diff=2
+  blocker_detail: null  # blocked 일 때만 채움
+```
+
+## leader 절대 순서 (WORKER_RESULT 받은 후)
+
+### 1) 파싱 + evidence 자체 검증 (필수)
+
+```
+required_remaining = task_list(issue_id, status="required")
+tests = task_test_list(issue_id)
+actual_diff = Bash("git diff --name-only HEAD")
+```
+
+worker.evidence 와 일치 안 하면 검증 실패. 이게 안티-할루시네이션 마지막 안전망.
+
+### 2) status 별 처리
+
+#### demo_ready (검증 통과)
+
+```
+for tid in WORKER_RESULT.tasks_finished:
+    task_update(id=tid, status="finished", agent_id=engram-leader@<sess>)
+
+note_add(issue_id, note_type="context", agent_id=engram-leader@<sess>,
+         summary=WORKER_RESULT.context_note.summary,
+         detail=WORKER_RESULT.context_note.detail)
+
+issue_release(id=issue_id, agent_id=<worker_agent_id>, transition_to="demo")
+```
+
+#### demo_ready (검증 실패)
+
+```
+note_add(caveat, summary="Demo gate fail: <항목>", detail=<불일치 내역>)
+issue_release(transition_to="ready", agent_id=<worker_agent_id>)
+```
+
+#### blocked
+
+```
+issue_link(source_id=blocker, target_id=issue, link_type="blocks")
+note_add(blocker_detail, summary=..., detail=...)
+issue_release(transition_to="ready", agent_id=<worker_agent_id>)
+```
+
+#### abandoned
+
+```
+note_add(caveat, summary="worker abandoned", detail=...)
+issue_release(transition_to="ready", agent_id=<worker_agent_id>)
+```
+
+### 3) Cleanup
+
+```
+session_end(project_key)
+```
+
+(여러 이슈 처리 사이클이면 마지막에 한 번)
 
 ## 사용자 코멘트와 agent 노트의 분리
 
 - 사용자 댓글 = `note_type="comment"`, `author="user"` (CommentSection 노출).
-- agent 검토 가이드 = `note_type="context"`, `author="agent"`.
-- agent 가 코멘트에 답변할 때만 `note_type="comment"`, `author="agent"`.
+- agent 검토 가이드 = `note_type="context"`, `author="agent"` (**leader 만 작성**).
+- agent 가 코멘트에 답변할 때만 `note_type="comment"`, `author="agent"` (worker 가 답변).
 
 ## 호출 결과 인용 의무 (Anti-Hallucination)
 
-각 mcp 호출 직후 응답 JSON 의 핵심 필드(id, status, assigned_agent, error)를 본인 응답에 인용.
-호출 없이 ID 발명/placeholder 보고 금지.
+worker 와 leader 모두 mcp 호출 직후 응답 JSON 핵심 필드를 본인 응답에 인용.
+WORKER_RESULT.evidence.git_diff_files 는 반드시 실제 `Bash("git diff --name-only HEAD")` 결과.
+**leader 가 동일 Bash 호출로 재검증** → 차이 발견 시 release(demo) 거부.
 
 ## 금지
 
-- `issue_update(status="finished" | "cancelled")` — 사용자 전용.
-- `issue_update(status="working" | "demo")` — `issue_claim` / `issue_release` 사용.
-- 사용자 코멘트(`comment` + `author="user"`)에 대한 `note_resolve` 금지.
-- task status="cancelled" 로 우회 금지 — caveat + ready 환원 후 보고.
+### worker
+- `issue_claim`, `issue_release`, `issue_update` 호출 금지.
+- `task_update`, `task_create`, `session_end` 호출 금지.
+- 사용자 코멘트(`author="user"`) `note_resolve` 금지.
+- `agent_id` 누락 금지.
+- WORKER_RESULT 양식 위반 금지.
+- Step 0~4 순서 건너뛰기 금지.
+
+### leader
+- worker 의 직접 호출 영역 (discovery/decision/blocker_detail/caveat note) 침범 금지.
+- demo→finished, *→cancelled 전이 절대 금지.
+- WORKER_RESULT evidence 자체 검증 없이 release(demo) 호출 금지.
 - agent_id 누락 금지.
-- Step 0~6 순서 건너뛰기 금지.
