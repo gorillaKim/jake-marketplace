@@ -97,7 +97,7 @@ for c in new_comments:
 ```
 task_list(issue_id, status="required")  → 남은 task 수
 task_test_list(issue_id)                → checked 여부
-Bash("git diff --name-only HEAD")       → 변경 파일
+Bash("git status --porcelain | awk '{print $2}'")  → 변경+신규 파일 목록 (untracked 포함)
 ```
 
 결과를 WORKER_RESULT.evidence 에 인용.
@@ -135,7 +135,7 @@ WORKER_RESULT:
 ```
 required_remaining = task_list(issue_id, status="required")
 tests = task_test_list(issue_id)
-actual_diff = Bash("git diff --name-only HEAD")
+actual_diff = Bash("git status --porcelain | awk '{print $2}'")
 ```
 
 worker.evidence 와 일치 안 하면 검증 실패. 이게 안티-할루시네이션 마지막 안전망.
@@ -194,7 +194,7 @@ session_end(project_key)
 ## 호출 결과 인용 의무 (Anti-Hallucination)
 
 worker 와 leader 모두 mcp 호출 직후 응답 JSON 핵심 필드를 본인 응답에 인용.
-WORKER_RESULT.evidence.git_diff_files 는 반드시 실제 `Bash("git diff --name-only HEAD")` 결과.
+WORKER_RESULT.evidence.git_diff_files 는 반드시 실제 `Bash("git status --porcelain | awk '{print $2}'"`)` 결과.
 **leader 가 동일 Bash 호출로 재검증** → 차이 발견 시 release(demo) 거부.
 
 ## 금지

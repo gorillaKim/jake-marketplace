@@ -145,10 +145,20 @@ issue_claim(id=N, agent_id="main@<sess>-issue<N>")
 다음 셋 모두 통과해야 Step D 진행:
 
 ```
-task_list(issue_id=N, status="required")  → 빈 배열인가
-task_test_list(issue_id=N)                → 항목이 있으면 모두 checked 인가
-Bash("git diff --name-only HEAD")         → 코드 변경이 있는 작업이면 1개 이상
+task_list(issue_id=N, status="required")                    → 빈 배열인가
+task_test_list(issue_id=N)                                  → 항목이 있으면 모두 checked 인가
+Bash("git status --porcelain | awk '{print $2}'")           → 변경+신규 파일 목록 (untracked 포함)
 ```
+
+> ⚠️ `git diff --name-only HEAD` 대신 `git status --porcelain` 사용 — 신규(untracked) 파일은 git diff 에 나타나지 않아 문서 작성 이슈에서 false-fail 이 납니다.
+
+**이슈 성격별 git 체크 기준**:
+
+| 이슈 성격 | git 체크 |
+|----------|---------|
+| 코드 변경 | 결과 1개 이상 필수 |
+| 문서 전용 (신규 .md/.yaml 추가) | 결과 1개 이상 필수 (신규 파일 실재 확인) |
+| 설정/메타/분석만 | 선택적 — context note 로 대체 가능 |
 
 **미통과 시** caveat note 후 ready 환원 (Step B 계속 또는 종료):
 
@@ -210,6 +220,8 @@ session_end(project_key)
 - `agent_id` 인자 누락 금지.
 - Step C (Demo Gate) 생략 후 release(demo) 금지.
 - task 가 어렵다고 status="cancelled" 우회 금지 — caveat + ready 환원으로 보고.
+- **Step B 작업 중 발견·결정·참조 내용 `note_add` 생략 금지** — 새로운 발견/결정이 생길 때 즉시 기록. 작업 완료 후 몰아서 쓰는 것 금지.
+- **required task 가 1개라도 남으면 `release(demo)` 절대 금지** — Step C 에서 `task_list(required)=[]` 확인 전 demo 진입 불가. 미완료 task 가 있으면 반드시 작업 완수 후 진행하거나 caveat + ready 환원.
 
 ## 출력 형식 (사용자에게 마지막 보고)
 
@@ -252,7 +264,7 @@ agent_id: main@<sess>-issue<N>
 
 3. Demo Gate:
    - task_list(#142, required) = [] ✓
-   - Bash("git diff --name-only HEAD") = [src/x.ts, src/y.ts, tests/x.test.ts] ✓
+   - Bash("git status --porcelain | awk '{print $2}'") = [src/x.ts, src/y.ts, tests/x.test.ts] ✓
 
 4. Demo 진입:
    - note_add(#142, context, agent_id, "검토 가이드: X 함수를 Y 로 리네이밍...")
