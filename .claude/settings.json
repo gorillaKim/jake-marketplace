@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p = require\\('/Users/madup/.nvm/versions/node/v20.20.0/lib/node_modules/oh-my-claudecode/package.json'\\); console.log\\(p.version, p.main\\)\")",
+      "Bash(lsof -iTCP:3456 -sTCP:LISTEN -P)",
+      "mcp__engram__board_status",
+      "mcp__engram__sprint_current",
+      "mcp__engram__session_restore",
+      "mcp__engram__epic_list",
+      "mcp__engram__issue_list",
+      "mcp__engram__epic_create",
+      "mcp__engram__issue_create",
+      "mcp__engram__task_create",
+      "mcp__engram__issue_link",
+      "mcp__engram__note_add",
+      "mcp__engram__issue_update",
+      "mcp__engram__task_update",
+      "mcp__engram__my_blocked_issues",
+      "mcp__engram__stalled_issues",
+      "mcp__engram__history_recent",
+      "mcp__engram__history_by_agent",
+      "mcp__engram__issue_claim",
+      "mcp__engram__issue_release",
+      "mcp__engram__issue_get",
+      "mcp__engram__history_for",
+      "mcp__engram__note_list",
+      "mcp__engram__note_resolve",
+      "mcp__engram__issue_delete",
+      "mcp__engram__task_list"
+    ]
+  }
+}
