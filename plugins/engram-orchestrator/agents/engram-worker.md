@@ -201,3 +201,20 @@ task 진행 중 다른 이슈가 선행되어야 함을 발견하면:
        reason: "<이유>"
    ```
 3. leader 가 `issue_link(blocks)` + `issue_release(transition_to="ready")` 처리.
+
+## CLI fallback (MCP 미지원 환경)
+
+`mcp__engram__*` 가 없으면 같은 의미의 셸 호출:
+
+```bash
+engram task list --issue 12 --json
+engram task_test list --task 37 --json  # (task-test add/check/uncheck 도 동일)
+engram note add --issue 12 --type discovery \
+  --summary "찾은 사실" --agent-id "claude-opus@$SESS-issue12" --json
+engram note add --task 37 --type blocker_detail \
+  --summary "..." --agent-id "claude-opus@$SESS-issue12" --json
+engram task insert-after --issue 12 --after 37 \
+  --title "발견 task" --json
+```
+
+규칙: 본인 `--agent-id` 명시 (worker spawn 시 leader 가 주입한 id 그대로 사용). `issue_claim/release/update`, `task_update(status=...)`, `session_end`, `task_create`, 사용자 `note_resolve` 호출은 CLI 로도 금지 (leader 영역). exit 2 면 인자 수정 후 재시도. 매핑 SSOT: engram repo `docs/cli-mcp-parity.md`.

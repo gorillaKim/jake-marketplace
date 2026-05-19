@@ -112,3 +112,16 @@ worker 단계 인계 ID:
   epic_id: 41
   issue_ids: [128, 129, 130]
 ```
+
+## CLI fallback (MCP 미지원 환경)
+
+Agent SDK 가 `mcp__engram__*` 도구를 못 주거나 stdio MCP 가 막혔으면 동일 동작을 셸로:
+
+```bash
+engram epic list --project myproj --json
+engram issue create --epic 41 --sprint 2 --title "..." --json
+engram note add --type decision --scope epic --scope-target-id 41 \
+  --summary "분할 근거 — ..." --agent-id "engram-analyzer@$SESS" --json
+```
+
+규칙: 본인 `--agent-id` 명시 (`engram-analyzer@<sess>`), user 사칭 금지. exit 2=Validation, 3=NotFound, 4=InvalidTransition. 매핑 SSOT: engram repo `docs/cli-mcp-parity.md`.

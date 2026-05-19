@@ -302,3 +302,19 @@ worker 의 WORKER_RESULT vs 실제 검증 결과 둘 다 인용해 차이 표시
 ## 비동기 모니터링 한계
 
 push 알림 미지원. `/loop 10m /engram-orchestrator:engram-leader project_key=xxx` 결합 권장.
+
+## CLI fallback (MCP 미지원 환경)
+
+Agent SDK 가 `mcp__engram__*` 를 못 주면 동일 의미의 CLI 호출로 대체:
+
+```bash
+engram issue claim 12 --agent-id "claude-opus@$SESS-issue12" --json
+engram stalled --threshold-minutes 10 --project myproj --json
+engram issue release 12 --agent-id "claude-opus@$SESS-issue12" \
+  --transition-to demo --json
+engram history by-agent --agent-id "worker@$SESS-issue12" --limit 20 --json
+engram note add --issue 12 --type context --summary "..." \
+  --agent-id "engram-leader@$SESS" --json
+```
+
+규칙: leader 본인은 `engram-leader@<sess>`, worker 점유 release 시 점유자 agent_id 사용 (force 회수 시는 `--force` + 본인 agent_id). user 사칭 금지. `demo → finished` 는 CLI 로도 시도 금지 (agent-demo-gate). exit 2 (Validation/CAS 거부) 발견 시 다른 이슈 전환. 매핑 SSOT: engram repo `docs/cli-mcp-parity.md`, 동치 보장: `crates/engram-cli/tests/parity_test.rs`.
