@@ -61,22 +61,54 @@ description: |
 [review-issue 스킬]
       │  project_key 결정 (git remote 또는 session_restore)
       │  issue_id 파싱 (명시 / 생략)
+      │
       ▼
-[engram-reviewer 에이전트 spawn]
+[폴링 여부 질문]  ← AskUserQuestion
       │
-      ├── Step A: 컨텍스트 수집
-      │     session_restore + issue_get (또는 epic별 issue_list)
+      ├── 일회성 검토
+      │     ▼
+      │   [engram-reviewer 에이전트 spawn]
+      │     ├── Step A: 컨텍스트 수집
+      │     │     session_restore + issue_get (또는 epic별 issue_list)
+      │     ├── Step B: 코드 검토
+      │     │     context note 읽기 → 변경 파일 Read → git diff 확인
+      │     ├── Step C: 판정 체크리스트
+      │     │     task 완료 / test 통과 / 코드 실재 / 패턴 일관성 / 사이드이펙트
+      │     └── Step D: 결과 기록
+      │           LGTM → note_add(context, "LGTM") + 사용자 안내
+      │           CHANGES_REQUESTED → note_add(caveat) + issue_release(ready|working)
       │
-      ├── Step B: 코드 검토
-      │     context note 읽기 → 변경 파일 Read → git diff 확인
-      │
-      ├── Step C: 판정 체크리스트
-      │     task 완료 / test 통과 / 코드 실재 / 패턴 일관성 / 사이드이펙트
-      │
-      └── Step D: 결과 기록
-            LGTM → note_add(context, "LGTM") + 사용자 안내
-            CHANGES_REQUESTED → note_add(caveat) + issue_release(working)
+      └── 폴링 모드
+            ▼
+          /loop 10m /engram-orchestrator:review-issue project_key=<key>
+          (10분마다 batch 검토 자동 반복)
 ```
+
+## 폴링 모드
+
+`project_key` 결정 직후, **반드시** 실행 방식을 먼저 질문한다:
+
+```
+AskUserQuestion(
+  "리뷰 실행 방식을 선택하세요",
+  options=[
+    "일회성 검토 (지금 한 번만 실행)",
+    "폴링 모드 (10분마다 demo 이슈 자동 검토)"
+  ]
+)
+```
+
+**일회성**: 기존처럼 engram-reviewer 에이전트를 즉시 spawn.
+
+**폴링 모드**:
+- 다음 명령을 실행한다:
+  ```
+  /loop 10m /engram-orchestrator:review-issue project_key=<key>
+  ```
+- 루프는 10분마다 batch 검토를 반복하며, demo 이슈가 없으면 "검토할 항목 없음" 로그만 남긴다.
+- 중단하려면 `/oh-my-claudecode:cancel` 을 입력한다.
+
+> ⚠️ 폴링 모드는 단일 이슈 지정(`issue_id=N`)과 함께 사용 불가 — batch 전용.
 
 ## project_key 결정 절차
 
@@ -145,5 +177,8 @@ demo 상태 이슈 없음: 0건
 ## 주의사항
 
 - `demo → finished` 전이는 **사용자 전용**. reviewer 는 절대 시도하지 않음.
-- reviewer 는 이슈를 `claim` 하지 않음 — `issue_release(working)` 권한 오류 시 `force=true` 사용.
+- reviewer 는 이슈를 `claim` 하지 않음 — `issue_release` 권한 오류 시 `force=true` 사용.
+- CHANGES_REQUESTED 복귀 상태는 blocker/심각도 기준으로 `ready` 또는 `working` 자동 결정.
+- 폴링 모드 중단: `/oh-my-claudecode:cancel` 또는 루프 종료 커맨드 사용.
+- 폴링 모드는 단일 이슈 지정(`issue_id=N`)과 함께 사용 불가 — batch 전용.
 - MCP 연결 실패 시 서버 재시작 안내 → CLI fallback 제안 (note #93 참조).

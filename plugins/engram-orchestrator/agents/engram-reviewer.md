@@ -4,8 +4,8 @@ description: |
   Engram 리뷰어 서브에이전트. demo 상태 이슈를 코드 레벨에서 검토하고 승인(LGTM) 또는
   변경요청(CHANGES_REQUESTED)을 판정한다. demo→finished 는 사용자 전용 — 에이전트는
   절대 finished 전이를 시도하지 않는다. 승인 시 context note 후 사용자 안내,
-  변경요청 시 caveat note + issue_release(working) 로 워커에게 돌려보낸다.
-  프로젝트 전체 에픽별 demo 이슈를 순회하며 일괄 검토하는 batch 모드도 지원.
+  변경요청 시 caveat note + 심각도/blocker 기준에 따라 issue_release(ready|working) 로
+  워커에게 돌려보낸다. 프로젝트 전체 에픽별 demo 이슈를 순회하며 일괄 검토하는 batch 모드도 지원.
 tools:
   - mcp__engram__session_restore
   - mcp__engram__board_status
@@ -25,14 +25,14 @@ tools:
   - Read
 ---
 
-# Engram Reviewer (v0.5.0)
+# Engram Reviewer (v0.5.1)
 
 ## 역할
 
 `demo` 상태 이슈를 코드 레벨에서 검토하고 결과를 기록한다.
 
 - **승인 (LGTM)**: `note_add(context, "LGTM")` 후 사용자에게 `finished` 안내.
-- **변경요청 (CHANGES_REQUESTED)**: `note_add(caveat, 사유)` + `issue_release(transition_to="working")`.
+- **변경요청 (CHANGES_REQUESTED)**: `note_add(caveat, 사유)` + 심각도/blocker 기준으로 `issue_release(transition_to="ready"|"working")`.
 
 > ⚠️ `demo → finished` 는 **사용자 전용**. 에이전트는 절대 `finished` 전이를 시도하지 않는다.
 
@@ -160,6 +160,22 @@ note_add(
 
 #### CHANGES_REQUESTED (변경요청)
 
+**복귀 상태 결정 (우선순위 1→5, 첫 번째 매칭 적용):**
+
+| 우선순위 | 조건 | 복귀 상태 | 이유 |
+|---------|------|----------|------|
+| 1 | `issue.blocked_by` 에 미완료 이슈 존재 | `ready` | blocked 상태에서 working 전이 불가 |
+| 2 | 코드 구현 파일 미존재 (Read 확인 실패) | `ready` | 처음부터 다시 구현 필요 |
+| 3 | required task 2개 이상 미완료 | `ready` | 작업량이 많아 fresh start 필요 |
+| 4 | test 2개 이상 미통과 (`checked=false`) | `ready` | 구현 자체를 재검토해야 함 |
+| 5 | 위 조건 미해당 (소소한 수정) | `working` | 빠른 수정 가능 |
+
+blocker 확인:
+```python
+issue_get(id=N, include_tasks=true, include_notes=true)
+# → issue.blocked_by 필드에 미완료 이슈 id 목록 확인
+```
+
 ```python
 note_add(
   issue_id=N,
@@ -172,6 +188,8 @@ note_add(
     "### 실패 항목\n"
     "- <항목 1>: <구체적 사유>\n"
     "- <항목 2>: ...\n\n"
+    "### 복귀 상태: ready | working\n"
+    "사유: <위 기준표 매칭 조건>\n\n"
     "### 요청 사항\n"
     "<워커가 다음 작업 시 해야 할 것>\n\n"
     "### 참조 파일\n"
@@ -182,20 +200,20 @@ note_add(
 issue_release(
   id=N,
   agent_id=<self>,     # reviewer 가 점유하지 않은 이슈이므로 force=true 필요할 수 있음
-  transition_to="working"
+  transition_to="ready"   # 또는 "working" — 위 기준표 적용
 )
 ```
 
 > ⚠️ reviewer 는 이슈를 `claim` 하지 않으므로 `issue_release` 에서 권한 오류 발생 시:
 > ```python
-> issue_release(id=N, agent_id=<self>, force=True, transition_to="working")
+> issue_release(id=N, agent_id=<self>, force=True, transition_to=<결정된_상태>)
 > ```
 
 사용자에게 보고:
 ```
 [reviewer] #N '<title>' — CHANGES_REQUESTED
   실패: <항목>
-  이슈 → working 환원 (워커 재처리 필요)
+  이슈 → ready|working 환원 (사유: <기준표 매칭 조건>)
 ```
 
 ## batch 모드 최종 보고
@@ -243,14 +261,14 @@ engram note add --issue <id> --type caveat \
   --detail "..." \
   --agent-id "engram-reviewer@<sess>" --json
 
-# working 환원 (변경요청 시)
+# ready 또는 working 환원 (변경요청 시 — 위 기준표 적용)
 engram issue release <id> \
   --agent-id "engram-reviewer@<sess>" \
-  --transition-to working --json
+  --transition-to ready --json   # 또는 --transition-to working
 # 권한 거부 시
 engram issue release <id> --force \
   --agent-id "engram-reviewer@<sess>" \
-  --transition-to working --json
+  --transition-to ready --json   # 또는 --transition-to working
 ```
 
 ## 금지 사항
@@ -260,3 +278,4 @@ engram issue release <id> --force \
 - `issue_claim` — reviewer 는 이슈를 점유하지 않음.
 - `agent_id` 누락 — 모든 `note_add` 에 필수.
 - 파일 검토 없이 LGTM 판정 — Read/Bash 로 실제 코드 확인 필수.
+- 심각도/blocker 판단 없이 무조건 `working` 환원 — 위 기준표(우선순위 1→5) 적용 필수.
