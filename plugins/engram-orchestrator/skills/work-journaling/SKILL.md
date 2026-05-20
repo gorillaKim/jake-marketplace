@@ -28,6 +28,8 @@ v0.4.0 부터 **worker 와 leader 의 호출 권한이 분리** 되어 sub-agent
 | `note_add(blocker_detail)` | ✅ | ✅ (leader 도 worker 보고 받아 추가) |
 | `note_add(caveat)` (실시간 주의) | ✅ | ✅ (검증 실패 / stalled 경고) |
 | `note_add(context)` (검토 가이드) | ❌ | ✅ (WORKER_RESULT 받아) |
+| `note_add(reference, [SKILL])` (스킬 발동 추적) | ✅ | ❌ |
+| `note_add(reference, [RULE])` (룰 적용 감사) | ✅ | ❌ |
 | `note_resolve` (질문 종결) | ✅ | ❌ |
 | `session_end` | ❌ | ✅ (사이클 끝) |
 
@@ -127,6 +129,56 @@ WORKER_RESULT:
       증거: task_list=[], test_pass=true, diff=2
   blocker_detail: null  # blocked 일 때만 채움
 ```
+
+## [SKILL] / [RULE] 접두어 컨벤션
+
+worker 가 스킬 발동 또는 caveat 룰 적용 시 `reference` 타입 노트로 즉시 기록한다.
+
+### 스킬 발동 노트 (`[SKILL]`)
+
+```
+note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+         summary="[SKILL] <skill-name> — <호출|스킵>, <적절|불필요|필수였으나 누락>",
+         detail="목적: <왜 발동했는가>\n결과: <스킬이 반환한 것 또는 효과>\n판단: <이 작업에 적절했는가, 이유>")
+```
+
+적절 발동 예시:
+```
+summary: "[SKILL] work-journaling — 호출, 적절"
+detail: |
+  목적: 워커 표준 절차 확인
+  결과: Step 0-4 흐름 재확인
+  판단: 이슈 작업 진입 시 필수 — 적절
+```
+
+불필요 발동 예시:
+```
+summary: "[SKILL] sprint-retro — 호출, 불필요"
+detail: |
+  목적: 현재 스프린트 상태 파악 시도
+  결과: 스프린트 회고 문서 생성 흐름 시작됨
+  판단: 이 이슈는 코드 수정 작업, 회고와 무관 — 불필요 발동
+```
+
+### 룰 적용 감사 노트 (`[RULE AUDIT]`) — Step 1 active_caveats 검토 후 1회
+
+```
+note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+         summary="[RULE AUDIT] 광역 규칙 <N>건 검토",
+         detail="<각 caveat 별 한 줄>\n- <요약> → 적용함|해당없음|주의 관찰")
+```
+
+예시:
+```
+summary: "[RULE AUDIT] 광역 규칙 2건 검토"
+detail: |
+  - PR 크기 100줄 제한 → 적용함 (커밋 단위 분리 예정)
+  - 테스트 커버리지 80% 유지 → 해당없음 (문서 전용 이슈)
+```
+
+active_caveats 가 0건이면 `summary="[RULE AUDIT] 광역 규칙 없음"` 한 줄로 기록 (생략 불가).
+
+---
 
 ## leader 절대 순서 (WORKER_RESULT 받은 후)
 

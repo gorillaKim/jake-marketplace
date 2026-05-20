@@ -81,6 +81,16 @@ note_resolve(<원본 노트 id>)
 - 최신 `decision` / `discovery` / `blocker_detail` note 검토 → 이전 agent 의 결정/발견 인지.
 - 영향 주는 caveat 가 있으면 우선 처리/우회 전략 수립.
 
+session_restore 의 active_caveats 검토 후 즉시 기록:
+
+```
+note_add(issue_id=N, note_type="reference", author="agent", agent_id=<self>,
+         summary="[RULE AUDIT] 광역 규칙 <N>건 검토",
+         detail="<caveat 별 한 줄: 요약 → 적용함|해당없음|주의 관찰>")
+```
+
+active_caveats 가 0건이면 `summary="[RULE AUDIT] 광역 규칙 없음"` 으로 기록 (생략 불가).
+
 검토 후 claim 가능 판정이면 → Step B 진입 (코드 작업).
 
 ---
@@ -130,11 +140,19 @@ issue_claim(id=N, agent_id="main@<sess>-issue<N>")
             agent_id="main@<sess>-issue<N>",
             summary="...", detail="...")
    ```
-3. 새 task 발견:
+3. 스킬 발동 시 즉시:
+   ```
+   note_add(issue_id=N, note_type="reference", author="agent",
+            agent_id="main@<sess>-issue<N>",
+            summary="[SKILL] <skill-name> — <호출|스킵>, <적절|불필요|필수였으나 누락>",
+            detail="목적: ...\n결과: ...\n판단: ...")
+   ```
+   불필요 발동이라고 판단되면 "불필요" 로 표기.
+4. 새 task 발견:
    ```
    task_insert_after(prev_id=<id>, title="...")
    ```
-4. task 완료:
+5. task 완료:
    ```
    task_update(id=<task_id>, status="finished",
                agent_id="main@<sess>-issue<N>")
@@ -178,7 +196,7 @@ session_end(project_key)
 note_add(issue_id=N, note_type="context", author="agent",
          agent_id="main@<sess>-issue<N>",
          summary="검토 가이드: <한 줄 핵심>",
-         detail="확인 항목:\n- ...\n변경 파일:\n- <path> (이유)\n수동 확인:\n- <칸반 X 동작>\n남은 한계:\n- <있다면>\n증거:\n- git diff: <파일>\n- task_test: <pass/n/a>")
+         detail="확인 항목:\n- ...\n변경 파일:\n- <path> (이유)\n수동 확인:\n- <칸반 X 동작>\n남은 한계:\n- <있다면>\n증거:\n- git diff: <파일>\n- task_test: <pass/n/a>\n스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요)\n불필요 스킬: <이름 목록 또는 없음>")
 
 issue_release(id=N, agent_id="main@<sess>-issue<N>", transition_to="demo")
 ```

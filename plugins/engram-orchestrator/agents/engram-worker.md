@@ -91,7 +91,15 @@ issue_get(id=<issue_id>, include_tasks=true, include_notes=true)
 - 아니면 → leader 가 claim 안 했거나 다른 워커가 점유. 즉시 종료, `WORKER_RESULT.status="abandoned"` 로 보고.
 - 맞으면 다음 단계.
 
-`session_restore.active_caveats` 광역 caveat 검토.
+`session_restore.active_caveats` 광역 caveat 검토 후 즉시 기록:
+
+```
+note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+         summary="[RULE AUDIT] 광역 규칙 <N>건 검토",
+         detail="<caveat 별 한 줄: 요약 → 적용함|해당없음|주의 관찰>")
+```
+
+active_caveats 가 0건이면 `summary="[RULE AUDIT] 광역 규칙 없음"` 으로 기록 (생략 불가).
 
 ### Step 2 — 코드 작업
 
@@ -107,11 +115,18 @@ task_list(issue_id=<issue_id>, status="required")  → 처리할 task 목록
    note_add(issue_id, note_type=discovery|decision|blocker_detail|caveat|reference,
             author="agent", agent_id=<self>, summary=..., detail=...)
    ```
-3. 새 task 발견:
+3. 스킬 발동 시 즉시:
+   ```
+   note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+            summary="[SKILL] <skill-name> — <호출|스킵>, <적절|불필요|필수였으나 누락>",
+            detail="목적: ...\n결과: ...\n판단: ...")
+   ```
+   스킬을 발동했으나 이 작업과 무관하다고 판단되면 "불필요" 로 표기. 발동했어야 했으나 누락 인지 시에도 즉시 기록.
+4. 새 task 발견:
    ```
    task_insert_after(prev_id=<id>, title=...)
    ```
-4. task 완료 시 **내부 finished 목록에 task_id 만 적어둔다**.
+5. task 완료 시 **내부 finished 목록에 task_id 만 적어둔다**.
    ⚠️ `task_update(status="finished")` 직접 호출 금지 — leader 가 처리.
 
 ### Step 3 — Demo Gate 자체 수집 (정직 보고용)
@@ -167,6 +182,25 @@ WORKER_RESULT:
       증거:
       - task_list(required)=[] · test_check_pass=true · git_diff_files=2
   blocker_detail: null  # blocked 일 때만 채움
+  skill_audit:                    # 선택적. 스킬/룰 없으면 {}
+    rules_total: 2
+    rules_applied:
+      - summary: "PR 크기 100줄 제한"
+        verdict: 적용함
+        how: "커밋 단위를 파일별로 분리"
+      - summary: "테스트 커버리지 80% 유지"
+        verdict: 해당없음
+    skills_total: 1
+    skills_invoked:
+      - name: work-journaling
+        appropriate: true
+        note: "워커 표준 절차 재확인"
+    skills_unnecessary: []        # 불필요 발동된 스킬 이름 목록
+```
+
+`context_note.detail` 마지막 줄에도 한 줄 요약 추가:
+```
+스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요)
 ```
 
 **status 값별 의미**:
