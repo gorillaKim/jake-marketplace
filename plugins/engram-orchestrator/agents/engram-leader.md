@@ -9,6 +9,7 @@ tools:
   - mcp__engram__sprint_current
   - mcp__engram__epic_list
   - mcp__engram__epic_get
+  - mcp__engram__mission_list
   - mcp__engram__issue_list
   - mcp__engram__issue_get
   - mcp__engram__issue_claim
@@ -80,7 +81,7 @@ worker 에게 주입할 식별자:
 sprint_current()                                       → sprint_id
 issue_list({sprint_id, project_key, status:"ready"})
 my_blocked_issues({project_key})                       → 블로커 그래프
-session_restore(project_key)                           → active_workers
+session_restore(project_key)                           → active_workers, active_missions
 ```
 
 `issue_list` 결과에서 제외:
@@ -180,13 +181,16 @@ elif not tests_ok:
 
 **모두 통과 시 (케이스 A 정정 포함) — 상태 전이**:
 
+- 이슈의 `mission_id`를 기반으로 `active_missions`에서 연관된 미션 정보를 조회합니다.
+- 만약 연관된 미션이 존재하면, `context_note` 생성 시 미션 목적 및 정보를 요약에 포함하여 기록합니다. (예: `summary: "[미션: {mission_title}] {worker_result.context_note.summary}"`)
+
 ```
 for task_id in worker_result.tasks_finished:
     task_update(id=task_id, status="finished", agent_id=engram-leader@<sess>)
 
 note_add(issue_id=N, note_type="context", author="agent",
          agent_id=engram-leader@<sess>,
-         summary=worker_result.context_note.summary,
+         summary=merged_summary,
          detail=worker_result.context_note.detail)
 
 issue_release(id=N, agent_id=worker_agent_id, transition_to="demo")
@@ -228,22 +232,27 @@ stalled_issues({ project_key, threshold_minutes: 10 })
 
 반환된 각 stalled 이슈에 대해:
 
-1. **중복 질문 확인** — `note_list(issue_id=N, note_type="comment", include_resolved=false)` 에서 이미 `summary` 가 `"Q: stalled"` 로 시작하는 comment 가 있으면 단계 2 로 넘어감.
-2. **자체 1차 점검** — `history_by_agent(agent_id=<해당 워커>, limit=5)`:
+1. **미션 우선순위 및 진행률 고려**:
+   - `session_restore`로 수집한 `active_missions` 내 `progress_rate`(미션 진행률)를 참조합니다.
+   - 진행률이 낮거나 핵심 미션에 해당하는 이슈가 정체 중인 경우, 질문 작성 시 긴급도를 강조하여 작성하고 모니터링 주기를 단축할 수 있습니다.
+2. **중복 질문 확인** — `note_list(issue_id=N, note_type="comment", include_resolved=false)` 에서 이미 `summary` 가 `"Q: stalled"` 로 시작하는 comment 가 있으면 단계 2 로 넘어감.
+3. **자체 1차 점검** — `history_by_agent(agent_id=<해당 워커>, limit=5)`:
    - 다른 이슈에서 활동 흔적 발견 → 워커가 살아서 다른 일 중. 질문 코멘트 추가하지 말고 caveat 만 (`"stalled <N>m — agent active elsewhere"`) + escalation 보류.
-   - 아무 활동 없음 → 진짜 정체 가능성. 단계 1.3 진행.
-3. **질문 코멘트 추가** (caveat 가 아닌 `comment` — 응답 가능 형태):
+   - 아무 활동 없음 → 진짜 정체 가능성. 단계 1.4 진행.
+4. **질문 코멘트 추가** (caveat 가 아닌 `comment` — 응답 가능 형태):
 
 ```python
+# 미션 정보가 있을 경우 질문에 미션 컨텍스트 포함
 note_add(
   issue_id=N,
   note_type="comment",
   author="agent",
   agent_id="engram-leader@<sess>",
-  summary=f"Q: stalled {minutes}m — 아직 작업 중인가요?",
+  summary=f"Q: stalled {minutes}m [미션: {mission_title}] — 아직 작업 중인가요?",
   detail=(
     f"issue #{N} 이 working 상태로 {minutes}분 정체.\n"
     f"점유 워커: {worker_agent_id}\n"
+    f"소속 미션: {mission_title} (진행률: {progress_rate}%)\n"
     f"마지막 활동: {last_activity_ts}\n\n"
     "응답 protocol:\n"
     "  1) 작업 중이면 — 워커 또는 사용자가 답변 comment + note_resolve(이 노트):\n"

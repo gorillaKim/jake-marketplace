@@ -158,14 +158,23 @@ issue_claim(id=N, agent_id="main@<sess>-issue<N>")
                agent_id="main@<sess>-issue<N>")
    ```
 
-### Step C — Demo Gate 자체 검증 (필수)
+### Step C — Demo Gate 자체 검증 및 피드백 작성 (필수)
 
-다음 셋 모두 통과해야 Step D 진행:
+다음 셋 모두 통과하고 스킬/하네스 평가 노트를 작성해야 Step D 진행:
 
 ```
 task_list(issue_id=N, status="required")                    → 빈 배열인가
 task_test_list(issue_id=N)                                  → 항목이 있으면 모두 checked 인가
 Bash("git status --porcelain | awk '{print $2}'")           → 변경+신규 파일 목록 (untracked 포함)
+```
+
+**[EVALUATION] 피드백 기록 (의무)**:
+데모 진입 전에 반드시 현재 실행 하네스, 스킬 사용 적절성, Engram 시스템 편의성을 평가하는 `[EVALUATION]` 노트를 `note_add(note_type="reference")`로 작성합니다.
+
+```
+note_add(issue_id=N, note_type="reference", author="agent", agent_id="main@<sess>-issue<N>",
+         summary="[EVALUATION] <피드백 핵심 요약>",
+         detail="하네스 평가: ...\n사용한 스킬 평가: ...\nEngram 사용 피드백: ...\n개선 제안: ...")
 ```
 
 > ⚠️ `git diff --name-only HEAD` 대신 `git status --porcelain` 사용 — 신규(untracked) 파일은 git diff 에 나타나지 않아 문서 작성 이슈에서 false-fail 이 납니다.
@@ -196,7 +205,7 @@ session_end(project_key)
 note_add(issue_id=N, note_type="context", author="agent",
          agent_id="main@<sess>-issue<N>",
          summary="검토 가이드: <한 줄 핵심>",
-         detail="확인 항목:\n- ...\n변경 파일:\n- <path> (이유)\n수동 확인:\n- <칸반 X 동작>\n남은 한계:\n- <있다면>\n증거:\n- git diff: <파일>\n- task_test: <pass/n/a>\n스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요)\n불필요 스킬: <이름 목록 또는 없음>")
+         detail="확인 항목:\n- ...\n변경 파일:\n- <path> (이유)\n수동 확인:\n- <칸반 X 동작>\n남은 한계:\n- <있다면>\n증거:\n- git diff: <파일>\n- task_test: <pass/n/a>\n- evaluation_note: added\n스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요)\n불필요 스킬: <이름 목록 또는 없음>")
 
 issue_release(id=N, agent_id="main@<sess>-issue<N>", transition_to="demo")
 ```
@@ -237,6 +246,7 @@ session_end(project_key)
 - `note_resolve` on 사용자 코멘트(`author="user"`) — 사용자가 직접 종결.
 - `agent_id` 인자 누락 금지.
 - Step C (Demo Gate) 생략 후 release(demo) 금지.
+- [EVALUATION] 피드백 노트 생략 후 release(demo) 금지.
 - task 가 어렵다고 status="cancelled" 우회 금지 — caveat + ready 환원으로 보고.
 - **Step B 작업 중 발견·결정·참조 내용 `note_add` 생략 금지** — 새로운 발견/결정이 생길 때 즉시 기록. 작업 완료 후 몰아서 쓰는 것 금지.
 - **required task 가 1개라도 남으면 `release(demo)` 절대 금지** — Step C 에서 `task_list(required)=[]` 확인 전 demo 진입 불가. 미완료 task 가 있으면 반드시 작업 완수 후 진행하거나 caveat + ready 환원.

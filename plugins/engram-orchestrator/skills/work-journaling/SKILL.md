@@ -94,7 +94,7 @@ for c in new_comments:
 
 **한계 (Claude Code 동기 모델)**: worker spawn 1회 안에서만 응답 가능. spawn 끝난 워커는 다음 leader 사이클에 재 spawn 돼야 응답 가능. engram 측 SSE 가 들어오기 전엔 사용자 답변이 주된 경로.
 
-### Step 3 — Demo Gate 자체 수집
+### Step 3 — Demo Gate 자체 수집 및 피드백 작성
 
 ```
 task_list(issue_id, status="required")  → 남은 task 수
@@ -102,7 +102,10 @@ task_test_list(issue_id)                → checked 여부
 Bash("git status --porcelain | awk '{print $2}'")  → 변경+신규 파일 목록 (untracked 포함)
 ```
 
-결과를 WORKER_RESULT.evidence 에 인용.
+**[EVALUATION] 노트 작성 (의무)**:
+작업을 마무리하며 하네스, 사용한 스킬, Engram 사용성을 평가하는 `[EVALUATION]` 피드백 노트를 반드시 `note_add(note_type="reference")`로 작성합니다.
+
+결과를 WORKER_RESULT.evidence 에 인용 (`evaluation_note_added: true` 포함).
 
 ### Step 4 — WORKER_RESULT 보고 (마지막 출력)
 
@@ -118,6 +121,7 @@ WORKER_RESULT:
   evidence:
     required_tasks_remaining: 0
     test_check_pass: true
+    evaluation_note_added: true   # [EVALUATION] 노트 기록 여부
     git_diff_files: ["src/...", "tests/..."]
   context_note:
     summary: "검토 가이드: <한 줄>"
@@ -130,9 +134,9 @@ WORKER_RESULT:
   blocker_detail: null  # blocked 일 때만 채움
 ```
 
-## [SKILL] / [RULE] 접두어 컨벤션
+## [SKILL] / [RULE] / [EVALUATION] 접두어 컨벤션
 
-worker 가 스킬 발동 또는 caveat 룰 적용 시 `reference` 타입 노트로 즉시 기록한다.
+worker 가 스킬 발동, caveat 룰 적용, 혹은 스킬/하네스 평가 시 `reference` 타입 노트로 기록한다.
 
 ### 스킬 발동 노트 (`[SKILL]`)
 
@@ -174,6 +178,26 @@ summary: "[RULE AUDIT] 광역 규칙 2건 검토"
 detail: |
   - PR 크기 100줄 제한 → 적용함 (커밋 단위 분리 예정)
   - 테스트 커버리지 80% 유지 → 해당없음 (문서 전용 이슈)
+
+### 스킬/하네스/Engram 평가 노트 (`[EVALUATION]`) — Step 3 직후 1회
+
+작업이 거의 완료되었을 때(Step 3 직후, Step 4 보고 직전), 현재 실행 환경인 하네스(Harness)의 속도와 안정성, 작업에 사용한 스킬(Skill)의 적절성 및 효율성, 그리고 Engram MCP/CLI의 토큰 소모량과 인터페이스 상의 불편한 점을 평가하여 `reference` 타입 노트로 기록합니다. (생략 불가 의무)
+
+```
+note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+         summary="[EVALUATION] <피드백 핵심 요약 (예: XX스킬 토큰 사용량 과다)>",
+         detail="하네스 평가: <하네스 속도, 안정성 등>\n사용한 스킬 평가: <작업 중 사용한 스킬의 적절성, 유용성, 개선점>\nEngram 사용 피드백: <사용 중 겪은 불편한 점, 토큰 소모 평가 등>\n개선 제안: <스킬/하네스/Engram 개선 방안>")
+```
+
+예시:
+```
+summary: "[EVALUATION] engram-orchestrator 스킬 사용 무난하나 토큰 소모 개선 필요"
+detail: |
+  하네스 평가: macOS 로컬 빌드 환경으로 테스트 속도 매우 빠름.
+  사용한 스킬 평가: work-journaling 스킬이 에이전트의 오작동을 차단하는 데 매우 적절했음.
+  Engram 사용 피드백: engram-mcp가 tools schema를 모두 로드하는 과정에서 토큰 소모가 다소 큼.
+  개선 제안: mcp schema 크기를 최적화하거나 client 측에 캐싱 로직 도입 필요.
+```
 ```
 
 active_caveats 가 0건이면 `summary="[RULE AUDIT] 광역 규칙 없음"` 한 줄로 기록 (생략 불가).

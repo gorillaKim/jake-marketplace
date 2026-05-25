@@ -7,6 +7,8 @@ description: |
 tools:
   - mcp__engram__sprint_current
   - mcp__engram__sprint_list
+  - mcp__engram__mission_list
+  - mcp__engram__mission_create
   - mcp__engram__epic_create
   - mcp__engram__epic_get
   - mcp__engram__epic_list
@@ -14,7 +16,6 @@ tools:
   - mcp__engram__issue_create
   - mcp__engram__issue_get
   - mcp__engram__issue_list
-  - mcp__engram__issue_set_sprint
   - mcp__engram__issue_update
   - mcp__engram__issue_link
   - mcp__engram__issue_unlink
@@ -62,12 +63,14 @@ engram-analyzer@<sessionShortId>
 
 ## 작업 흐름
 
-1. **컨텍스트 파악**: `session_restore(project_key)` + `sprint_current()` 로 활성 스프린트 확인.
-2. **에픽 매핑**:
-   - `epic_list(project_key)` 로 후보 에픽 검색.
-   - 적합 에픽이 없으면 `epic_create(project_key, title, description)` 신규 생성.
-3. **이슈 분할**: 자연스러운 경계(2~8 시간 단위)로 분할.
-   각 이슈에 `issue_create(epic_id, sprint_id, title, description, priority)` — `sprint_id` 는 활성 스프린트 ID.
+1. **컨텍스트 파악**: `session_restore(project_key)` + `sprint_current()` 로 활성 스프린트 및 active_missions(미션 목록)을 확인합니다.
+2. **미션 및 에픽 매핑**:
+   - 대규모의 기획이나 여러 프로젝트에 걸친 변경일 경우, 기존 미션 중 적합한 미션이 있는지 `mission_list`로 조회합니다. 없으면 `mission_create(sprint_id, title, description)`로 미션을 신규 수립합니다.
+   - `epic_list(project_key)` 로 후보 에픽을 조회합니다.
+   - 적합한 에픽이 없다면 `epic_create(project_key, title, description, mission_id, sprint_id)`를 호출하여 에픽을 새로 생성하고 적절한 미션/스프린트와 연결합니다. (ADR-0014에 따라 에픽이 스프린트의 SSOT입니다.)
+3. **이슈 분할**: 자연스러운 경계(2~8 시간 단위)로 작업을 분할합니다.
+   각 이슈는 `issue_create(epic_id, title, description, priority)`로 생성합니다.
+   - **주의**: ADR-0014에 따라 이슈 생성(`issue_create`) 시 `sprint_id` 및 `mission_id` 인자는 전달하지 않습니다 (부모 에픽으로부터 자동 상속됨).
 4. **태스크 계획**: `task_create(issue_id, title)` 로 다수 등록. 순서가 중요한 task 는 생성 순서로.
 5. **선후 관계**: A 완료 후 B 시작 가능하면 `issue_link(source_id=A, target_id=B, link_type="blocks")`.
 6. **분석 근거 보존**: `note_add(issue_id, note_type="decision", author="agent", agent_id=<self>, summary=..., detail=...)`.
@@ -118,8 +121,16 @@ worker 단계 인계 ID:
 Agent SDK 가 `mcp__engram__*` 도구를 못 주거나 stdio MCP 가 막혔으면 동일 동작을 셸로:
 
 ```bash
-engram epic list --project myproj --json
-engram issue create --epic 41 --sprint 2 --title "..." --json
+# 미션 확인 및 생성
+engram mission list --json
+engram mission create --sprint 3 --title "신규 출시 목표" --json
+
+# 에픽 생성 (미션 및 스프린트 연동)
+engram epic create --project myproj --title "결제 개선" --mission-id 18 --json
+
+# 이슈 생성 (sprint_id 옵션 제거, 에픽 자동 상속)
+engram issue create --epic 41 --title "콜백 검증" --json
+
 engram note add --type decision --scope epic --scope-target-id 41 \
   --summary "분할 근거 — ..." --agent-id "engram-analyzer@$SESS" --json
 ```

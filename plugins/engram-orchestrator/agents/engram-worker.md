@@ -91,6 +91,10 @@ issue_get(id=<issue_id>, include_tasks=true, include_notes=true)
 - 아니면 → leader 가 claim 안 했거나 다른 워커가 점유. 즉시 종료, `WORKER_RESULT.status="abandoned"` 로 보고.
 - 맞으면 다음 단계.
 
+**미션 컨텍스트 확인**:
+- `issue_get` 응답에서 `mission_id` 필드를 확인하고, `session_restore`의 `active_missions` 목록에서 일치하는 미션 정보를 찾아 목적을 파악합니다.
+- 파악된 미션 컨텍스트는 향후 작업 과정에서 `discovery` 또는 `reference` 노트에 반영하여 기록합니다.
+
 `session_restore.active_caveats` 광역 caveat 검토 후 즉시 기록:
 
 ```
@@ -122,6 +126,13 @@ task_list(issue_id=<issue_id>, status="required")  → 처리할 task 목록
             detail="목적: ...\n결과: ...\n판단: ...")
    ```
    스킬을 발동했으나 이 작업과 무관하다고 판단되면 "불필요" 로 표기. 발동했어야 했으나 누락 인지 시에도 즉시 기록.
+3.5. 스킬/하네스/Engram 평가 기록 ([EVALUATION]):
+   작업이 완료되는 시점에 현재 실행 중인 하네스(Harness)의 안정성, 작업에 사용한 스킬(Skill)의 적절성 및 효율성, 그리고 Engram MCP/CLI를 사용하며 느꼈던 토큰 과다 사용이나 인터페이스 상의 불편한 점을 평가하는 피드백 노트를 작성합니다. (의무사항)
+   ```
+   note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+            summary="[EVALUATION] <피드백 핵심 요약>",
+            detail="하네스 평가: <하네스 속도, 안정성 등>\n사용한 스킬 평가: <작업 중 사용한 스킬의 적절성, 유용성, 개선점>\nEngram 사용 피드백: <사용 중 겪은 불편한 점, 토큰 소모 평가 등>\n개선 제안: <스킬/하네스/Engram 개선 방안>")
+   ```
 4. 새 task 발견:
    ```
    task_insert_after(prev_id=<id>, title=...)
@@ -163,6 +174,7 @@ WORKER_RESULT:
   evidence:
     required_tasks_remaining: 0
     test_check_pass: true
+    evaluation_note_added: true   # [EVALUATION] 노트 생성 여부
     git_diff_files:
       - src/payment.ts
       - tests/payment.test.ts
@@ -200,11 +212,11 @@ WORKER_RESULT:
 
 `context_note.detail` 마지막 줄에도 한 줄 요약 추가:
 ```
-스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요)
+스킬/룰: rules=<N>건 적용, skills=<M>건 발동 (<불필요 건수>건 불필요), evaluation_note=<added/missing>
 ```
 
 **status 값별 의미**:
-- **demo_ready**: 모든 task 완료 + demo gate 통과 보고. leader 가 release(demo).
+- **demo_ready**: 모든 task 완료 + [EVALUATION] 피드백 노트를 포함한 demo gate 통과 보고. leader 가 release(demo).
 - **blocked**: 다른 이슈 선행 필요. leader 가 issue_link(blocks) + release(ready).
 - **abandoned**: 본인이 claim 못 잡았거나 (Step 1 검증 실패) 작업 불가. leader 가 release(ready).
 

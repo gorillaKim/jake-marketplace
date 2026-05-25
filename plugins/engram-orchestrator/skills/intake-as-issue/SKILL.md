@@ -1,6 +1,12 @@
 ---
 name: intake-as-issue
 description: 사용자가 구현/작업/수정 요청을 했을 때, 즉시 코드 변경에 들어가지 말고 Engram 이슈로 등록할지 먼저 확인한 뒤 engram-analyzer 를 호출한다. 트리거 — 다단계 변경이 명백한 작업 요청 ("구현해줘", "추가해줘", "리팩터링", "마이그레이션" 등). 1줄 수정/단순 조회/명시적 즉시 처리 지시는 제외.
+tools:
+  - mcp__engram__sprint_current
+  - mcp__engram__mission_list
+  - mcp__engram__session_restore
+  - AskUserQuestion
+  - Agent
 ---
 
 # Intake as Issue
@@ -67,9 +73,12 @@ analyzer 대신 solo-track (직접 처리 + 기록) 으로 진행하면
 
 ### 3) 분기
 
-- **예**: `Agent(subagent_type='engram-orchestrator:engram-analyzer', prompt=<정리된 요청 + project_key 힌트>)` 호출 →
-  analyzer 가 ready 이슈를 생성하면 그 ID 목록을 사용자에게 보고 →
-  사용자가 `engram-leader` 를 트리거하거나 즉시 worker spawn 여부 재확인.
+- **예**: 
+  1. `sprint_current` 및 `mission_list`를 호출하여 현재 활성 스프린트와 미션 목록을 파악하고, 사용자 요청이 기존의 특정 미션과 연계되어 있는지 분석합니다.
+  2. `engram-analyzer`를 spawn 할 때, 파악된 미션 ID를 `hint_mission_id`로 프롬프트에 포함하여 전달합니다. 만약 새로운 미션(대형 피처 출시 목표 등)이 요구된다면 프롬프트에 "신규 미션 생성 필요" 명세를 포함합니다.
+  3. `Agent(subagent_type='engram-orchestrator:engram-analyzer', prompt=<정리된 요청 + project_key 힌트 + hint_mission_id 및 미션 힌트>)` 호출 →
+     analyzer 가 ready 이슈를 생성하면 그 ID 목록을 사용자에게 보고 →
+     사용자가 `engram-leader` 를 트리거하거나 즉시 worker spawn 여부 재확인.
 - **아니오**: 이슈 생성 없이 즉시 작업. 추가 권유 없음 (마찰 최소화).
 
 ## 주의
