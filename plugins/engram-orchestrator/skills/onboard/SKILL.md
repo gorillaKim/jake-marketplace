@@ -249,7 +249,7 @@ cat "$CONFIG"
 ### 5-1. MCP probe
 
 ```
-session_restore(project_key)   # 또는 임의의 read-only MCP 호출
+session_restore(project_key, compact=true)   # 또는 임의의 read-only MCP 호출 (프로브 → compact 로 최소 페이로드)
 ```
 
 **성공** → Step 5-2 (완료 안내).

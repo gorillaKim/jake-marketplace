@@ -47,7 +47,7 @@ tools:
 ### Step A — 컨텍스트 수집
 
 ```
-session_restore(project_key)        → active_caveats, sprint_id
+session_restore(project_key, compact=true)   → active_caveats, sprint_id (오리엔테이션 → compact; 리뷰 대상 issue_get 은 풀로드 유지)
 ```
 
 **단일 이슈 모드** (`issue_id` 명시 시):

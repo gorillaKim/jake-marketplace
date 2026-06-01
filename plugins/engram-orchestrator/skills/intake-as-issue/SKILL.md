@@ -32,23 +32,23 @@ tools:
 - 한 파일·한 함수 안에서 끝나는 게 명백한 수정
 - 사용자가 이미 이슈 ID 를 들고 와서 처리만 요청 ("이슈 #142 작업해줘") — worker 직접 호출
 
-## 라우팅 힌트 — analyzer 대신 solo-track 추천
+## 실행 모드 판단 — solo-track vs 팀(analyzer→leader/worker)
 
-analyzer + leader + worker 3-agent 패턴은 멀티 PR / 병렬 가능 이슈에 적합합니다.
-다음 조건을 **모두** 만족하면 analyzer 대신 **solo-track** 을 추천하세요:
+작업을 **누가 처리할지**는 [실행 모드 라우팅 (solo-track vs 팀)](../../README.md#실행-모드-라우팅-solo-track-vs-팀) 기준으로 판단한다. 판단은 두 시점에서 이뤄진다:
 
-- 산출물이 **독립적 파일 5개 이하** (파일 간 충돌 없음)
-- **코드 로직 없음** (마크다운, YAML, 설정 파일 등 문서 작업)
-- 기존 파일 수정 없이 **신규 파일 추가만**
-
-추천 문구 예시:
+**(1) 사전(pre-analysis) — 요청 텍스트만으로 명백할 때**
+요청만 봐도 **단일 이슈·한 PR·병렬 이득 없음**이 분명하면(예: 함수 1개 리네이밍, 문서 파일 몇 개 추가, 설정 한 곳 변경) analyzer 분할 자체가 오버킬이므로 **곧장 solo-track 추천**:
 ```
-이 작업은 문서 파일 3개 생성으로 간단히 끝날 것 같습니다.
-analyzer 대신 solo-track (직접 처리 + 기록) 으로 진행하면
-토큰과 시간을 절반 이하로 줄일 수 있습니다. 어떻게 할까요?
+이 작업은 한 PR 분량(독립 task 2~3개)으로 보입니다.
+analyzer/leader/worker 분리 대신 solo-track(직접 처리 + 기록)으로 진행하면
+토큰과 시간을 절반 이하로 줄일 수 있습니다.
   (a) solo-track 으로 바로 진행 (Recommended)
-  (b) analyzer 로 이슈 분할 후 leader/worker 처리
+  (b) analyzer 로 이슈 분할 후 팀 처리
 ```
+반대로 **진짜 복잡한 상황**(독립적이고 무거운 이슈가 동시에 여럿 → 병렬 이득 / 파일 충돌로 worktree 격리 필요 / 멀티 LLM 라우팅)이 명백할 때만 곧장 analyzer→팀 경로. 그 외엔 solo 를 기본으로.
+
+**(2) 사후(post-analysis) — 분할해 봐야 규모가 드러날 때 (권장)**
+모호하면 일단 `engram-analyzer` 를 호출하고, analyzer 가 반환하는 `RECOMMENDED_MODE`(solo|team)에 따라 라우팅한다(아래 실행 절차 3) 참조). analyzer 가 이슈 수·병렬 폭·충돌 위험을 실제로 산출하므로 가장 정확하다.
 
 ## 강제 트리거 (게이트 무시)
 
@@ -77,8 +77,15 @@ analyzer 대신 solo-track (직접 처리 + 기록) 으로 진행하면
   1. `sprint_current` 및 `mission_list`를 호출하여 현재 활성 스프린트와 미션 목록을 파악하고, 사용자 요청이 기존의 특정 미션과 연계되어 있는지 분석합니다.
   2. `engram-analyzer`를 spawn 할 때, 파악된 미션 ID를 `hint_mission_id`로 프롬프트에 포함하여 전달합니다. 만약 새로운 미션(대형 피처 출시 목표 등)이 요구된다면 프롬프트에 "신규 미션 생성 필요" 명세를 포함합니다.
   3. `Agent(subagent_type='engram-orchestrator:engram-analyzer', prompt=<정리된 요청 + project_key 힌트 + hint_mission_id 및 미션 힌트>)` 호출 →
-     analyzer 가 ready 이슈를 생성하면 그 ID 목록을 사용자에게 보고 →
-     사용자가 `engram-leader` 를 트리거하거나 즉시 worker spawn 여부 재확인.
+     analyzer 가 ready 이슈를 생성하고 `RECOMMENDED_MODE`(solo|team) + 근거를 반환.
+  4. **실행 모드 라우팅** — analyzer 의 `RECOMMENDED_MODE` 에 따라 진행 ([기준](../../README.md#실행-모드-라우팅-solo-track-vs-팀)):
+     - `solo` → 이슈 ID 목록 보고 후 **`solo-track` 으로 바로 이어 진행** (`solo-track` 에 `issue_id` 전달 = Step A.continue). 저비용이므로 추가 확인 불필요.
+     - `team` → 워커 N개 spawn 은 비용이 크므로 **추천 + `AskUserQuestion` 으로 확인**:
+       ```
+       질문: "이슈 N건이 등록됐습니다(병렬 가능 M건). leader 로 팀 처리를 시작할까요?"
+       옵션: "예 — leader 트리거 (Recommended)" / "아니오 — 이슈만 두고 대기"
+       ```
+       "예" → `engram-leader` 트리거. (사용자가 이미 즉시 진행을 명시했으면 확인 생략하고 바로 leader)
 - **아니오**: 이슈 생성 없이 즉시 작업. 추가 권유 없음 (마찰 최소화).
 
 ## 주의
