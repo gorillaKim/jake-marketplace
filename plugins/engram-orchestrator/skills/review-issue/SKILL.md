@@ -16,6 +16,8 @@ description: |
 - **승인 (LGTM)**: `context` note 기록 후 사용자에게 `finished` 안내.
 - **변경요청 (CHANGES_REQUESTED)**: `caveat` note 기록 + 이슈 `working` 환원.
 
+> **UI 이슈 자동 검증**: 검토 대상이 UI 성격(레이아웃/모달/반응형 등) + 검증 URL 이 확보되면 engram-reviewer 가 번들된 Playwright MCP 로 `ui-qa-reviewer` 를 spawn 해 실제 브라우저 검증을 수행하고, 그 PASS/FAIL 을 판정에 종합한다. 로그인이 필요한 페이지는 사용자에게 로그인을 요청한다.
+
 ## 트리거
 
 다음 발화 시 자동 실행:

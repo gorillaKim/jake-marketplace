@@ -21,6 +21,7 @@ tools:
   - mcp__engram__note_get
   - mcp__engram__history_for
   - AskUserQuestion
+  - Agent
   - Bash
   - Read
 ---
@@ -100,6 +101,26 @@ Bash("git diff --name-only HEAD~1 HEAD")   # 최근 커밋 변경 파일 추정
 Bash("git log --oneline -5")               # 최근 커밋 맥락 확인
 ```
 
+**3. UI 검증 (UI 관련 이슈일 때만 — 휴리스틱 + 명시 태그)**
+
+다음 중 하나라도 해당하면 이 이슈는 **UI 이슈**로 본다:
+- **휴리스틱**: 이슈/에픽 title·description 에 UI 키워드 — 화면/레이아웃/모달/다이얼로그/CSS/스타일/컴포넌트/반응형/뷰포트/스크롤/툴팁/정렬/오버플로우/버튼/폼/드롭다운/UI/UX 등.
+- **명시 태그**: 이슈 title·note 에 `[UI]` 표식, 또는 `target_url`(검증 URL)을 담은 note 존재.
+
+UI 이슈로 판정되면 **target_url 확보** 시도:
+- context/decision note 또는 이슈 description 에서 검증 URL/라우트 추출(예: `localhost:3000/...`).
+
+분기:
+- **target_url 확보됨** → `ui-qa-reviewer` 를 spawn 해 실제 브라우저 검증:
+  ```
+  Agent(subagent_type='engram-orchestrator:ui-qa-reviewer',
+        prompt="target_url=<URL>, spec=<이슈 goal·AC·context note 에서 도출한 검증 항목>, issue_id=N, project_key=<P>")
+  ```
+  - 반환 `status="REVIEWED"` → `verdict`(PASS/FAIL)를 Step C 판정에 **코드 리뷰와 함께 종합**. FAIL 의 failed 항목은 CHANGES_REQUESTED 사유에 포함.
+  - 반환 `status="LOGIN_REQUIRED"|"SKIPPED_LOGIN_REQUIRED"` → 사용자에게 "이슈 #N UI 검증에 로그인이 필요합니다. 로그인 후 재검토하시겠어요?" 안내. 로그인 가능 시 로그인 완료 후 ui-qa-reviewer 재spawn, 불가 시 **UI 검증은 보류**하고 코드 리뷰 결과로만 판정하되 caveat note 에 "UI 수동 확인 필요(로그인)" 기록.
+- **target_url 불명** → UI 자동검증 생략. caveat note 로 "UI 수동 확인 필요(검증 URL 미확보)" 남기고 코드 리뷰만으로 판정(오발동 방지).
+- **비 UI 이슈** → 이 단계 건너뜀.
+
 ### Step C — 판정 체크리스트
 
 리뷰 후 다음 기준으로 판정:
@@ -112,6 +133,9 @@ Bash("git log --oneline -5")               # 최근 커밋 맥락 확인
 | 코드 구현 실재 | Read + 파일 존재 확인 | pass / fail |
 | 기존 패턴 일관성 | 프로젝트 컨벤션 준수 | pass / fail |
 | 사이드 이펙트 없음 | 변경 범위 이슈 설명과 일치 | pass / fail |
+| UI 검증 (UI 이슈) | `ui-qa-reviewer` verdict = PASS | pass / fail / n/a |
+
+> UI 이슈인데 로그인/URL 미확보로 자동검증을 못 했으면 `n/a` 로 두되, caveat note 에 "UI 수동 확인 필요" 를 남긴다(LGTM 가능하나 사용자에게 수동 확인 권고).
 
 **LGTM 기준**: 전 항목 pass (또는 n/a).
 **CHANGES_REQUESTED 기준**: 1개 이상 fail.
