@@ -226,8 +226,9 @@ Agent(subagent_type='engram-orchestrator:engram-reviewer',
 - **LGTM** → reviewer 가 context note 기록 → Step E 진행, 사용자에게 "리뷰 통과, demo→finished 사용자 종결" 안내.
 - **CHANGES_REQUESTED** → reviewer 가 caveat note + `issue_release(ready|working)` 로 환원. 메인은 그 피드백으로 **Step B 로 복귀**해 수정 후 다시 Step C~D.5.
 - reviewer 는 절대 `finished` 로 전이하지 않는다(사용자 전용). 메인도 마찬가지.
+- **UI 이슈 자동 커버**: 이슈가 UI 성격(레이아웃/모달/반응형 등 + 검증 URL)이면 engram-reviewer 가 내부에서 `ui-qa-reviewer` 를 spawn 해 실제 브라우저 검증까지 수행한다. solo 측 추가 작업 없음. 로그인이 필요하면 reviewer 가 사용자에게 로그인을 요청한다.
 
-> 자기 자신(메인 컨텍스트)이 리뷰를 겸하지 않는다 — self-approve 금지. 이 spawn 이 solo 모드의 유일한 (그리고 필수) 서브에이전트 호출이다.
+> 자기 자신(메인 컨텍스트)이 리뷰를 겸하지 않는다 — self-approve 금지. 이 spawn(engram-reviewer)이 solo 모드의 유일한 (그리고 필수) 서브에이전트 호출이다 (UI 이슈면 reviewer 가 ui-qa-reviewer 를 중첩 spawn).
 
 ### Step E — Cleanup
 
