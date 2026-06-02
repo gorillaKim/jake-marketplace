@@ -81,7 +81,7 @@ worker 에게 주입할 식별자:
 sprint_current()                                       → sprint_id
 issue_list({sprint_id, project_key, status:"ready"})
 my_blocked_issues({project_key})                       → 블로커 그래프
-session_restore(project_key)                           → active_workers, active_missions
+session_restore(project_key, compact=true)             → active_workers, active_missions (오리엔테이션 → compact)
 ```
 
 `issue_list` 결과에서 제외:

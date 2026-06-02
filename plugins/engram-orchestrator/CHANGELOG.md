@@ -4,6 +4,29 @@ engram-orchestrator 플러그인의 버전별 변경 내역입니다.
 
 ---
 
+## [0.7.0] — 2026-06-02
+
+### 실행 모드 라우팅 (Solo vs Team) + Solo 리뷰 분리
+
+- **`실행 모드 라우팅 (solo-track vs 팀)` 기준 신설** (README) — **solo 를 강한 기본값**으로, 팀은 *진짜 복잡한 예외*(동시 병렬 이득·worktree 격리·멀티 LLM 중 하나가 명확)에만. **이슈 개수는 약한 신호** — solo 는 여러 이슈도 직렬로 처리하므로 개수만으로 팀을 부르지 않는다. "judge → proceed": solo 는 바로 진행, 팀은 비용이 크므로 확인 후 진행.
+- **`engram-analyzer` 가 분할 직후 `RECOMMENDED_MODE`(solo|team) + 근거를 반환** — 이슈 수·병렬 폭·충돌 위험을 실제 산출한 시점에 판정(가장 정확).
+- **`intake-as-issue` 라우팅 재구성** — 기존 "문서 작업만 solo" 한정 힌트를 라우팅 기준 참조로 교체(코드 작업 포함). 사전(요청 텍스트)·사후(analyzer `RECOMMENDED_MODE`) 2단 판단 + `solo`→solo-track 자동 진행 / `team`→AskUserQuestion 확인 후 leader 트리거.
+- **`solo-track` 매트릭스에 기준 SSOT 상호참조 추가**.
+- **Solo 모드 리뷰 분리 (Step D.5 신설)** — solo 라도 *작성자 ≠ 리뷰어* 원칙 유지: demo 진입 후 메인이 직접 LGTM 하지 않고 **`engram-reviewer` 서브에이전트를 spawn** 해 독립 리뷰. CHANGES_REQUESTED 시 Step B 복귀. self-approve 를 금지 항목에 추가. ("solo" = 병렬 worker 미사용이지 모든 서브에이전트 미사용이 아님.)
+
+### 토큰 효율 (Token Efficiency)
+
+- **오리엔테이션 호출 `compact=true` 표준화** — 5개 에이전트(analyzer/leader/worker/reviewer/retro) 및 스킬(work-journaling/solo-track/onboard/review-issue/sprint-retro)의 `session_restore` 호출을 `compact=true`로 정렬. per-issue note/task 가 count 로 접히며 `active_caveats`/`active_missions` 는 보존되어 데이터 손실 없이 페이로드만 감소. (실측: 무필터 ~680KB → `project_key`+`compact` ~15KB, −98%)
+- **이력 조회 `limit` 명시** — `engram-retro` / `solo-track` 의 `history_for` 호출에 `limit` 추가.
+- **retro 1차 스캔 가이드** — `engram-retro` 이슈 수집 시 `issue_list(projection=[...])` 로 1차 스캔 후 필요한 이슈만 상세 수집하도록 안내.
+- **신규 문서 섹션 `토큰 예산 / Payload 규칙`** (README) — "오리엔테이션은 가볍게(compact), 실제 소비할 본문만 풀로드" 원칙 + size guard 경고 대응 규칙 명문화. 각 에이전트/스킬이 이 섹션을 참조.
+
+### 유지 (Unchanged by design)
+
+- worker/reviewer/retro 가 **실제 소비**하는 작업·리뷰·회고 대상 이슈의 `issue_get(include_notes=true)` 풀로드는 그대로 유지 — compact 시 description/goal 이 잘리므로 본문이 필요한 경로엔 미적용 (안전 우선).
+
+---
+
 ## [0.6.0] — 2026-05-25
 
 ### 추가 (Added)

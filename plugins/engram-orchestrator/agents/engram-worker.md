@@ -83,8 +83,8 @@ note_list(issue_id=<issue_id>, note_type="caveat", include_resolved=false)
 ### Step 1 — 컨텍스트 적재 + 점유 확인
 
 ```
-session_restore(project_key)
-issue_get(id=<issue_id>, include_tasks=true, include_notes=true)
+session_restore(project_key, compact=true)                     # 오리엔테이션 → compact (active_caveats 는 그대로 보존)
+issue_get(id=<issue_id>, include_tasks=true, include_notes=true)  # 작업 대상 본문 → 풀로드 유지 (compact 금지)
 ```
 
 **필수 검증**: `issue.assigned_agent == <self>` 인가?

@@ -488,6 +488,55 @@ history_for({entity_type: "issue", entity_id: 128})
 
 ---
 
+## 실행 모드 라우팅 (solo-track vs 팀)
+
+이슈로 등록할 작업을 **누가 처리할지** 결정하는 기준. 분할 규모가 드러나는 시점(**analyzer 분할 직후가 가장 정확** — 이슈 수/병렬 폭/충돌 위험을 이미 안다)에 적용한다.
+
+결정 신호는 **이슈 개수가 아니라 "동시 처리·격리·멀티 LLM 이득이 worker N개 spawn 비용을 넘느냐"** 다. solo-track 은 이슈가 여러 개라도 한 세션에서 **직렬로 거뜬히 처리**한다 — 개수만으로 팀을 부르지 않는다.
+
+| 신호 | solo-track (메인 직접, 직렬) | 팀 (leader + worker, 동시) |
+|------|----------------------------|---------------------------|
+| 이슈 수 | 다수라도 OK (개수는 **약한 신호**) | 개수보다 아래 신호가 결정 |
+| 병렬 폭 (서로 blocks 없는 독립 이슈) | 직렬로 충분 | **동시 처리 이득이 분명**할 만큼 충분히 많고 각 이슈가 무거움 |
+| 파일/모듈 충돌 위험 | 없음 또는 순차로 회피 가능 | 있음 → **worktree 격리** 이득 |
+| 멀티 LLM 라우팅 (codex/gemini 병행) | ❌ | ✅ |
+| 이슈 1건당 작업량 | 작거나 보통 (순차가 빠름) | 크고 독립적 → 분산이 전체 처리 시간 단축 |
+
+**판정** (solo 강하게 선호):
+- **기본값은 solo-track. 가능한 한 solo 에 의존한다.** 이슈가 여럿이어도 직렬로 처리해도 무방하면 solo-track 으로 순차 진행한다.
+- **팀은 "진짜 복잡한" 예외에만** — 다음 중 하나가 **명확할 때만** 팀으로 승급:
+  1. 독립적이고 무거운 이슈가 **동시에 여럿**이라 병렬 spawn 이 전체 처리 시간을 실질적으로 줄인다.
+  2. 파일/모듈 충돌로 **worktree 격리**가 필요하다.
+  3. **멀티 LLM 라우팅**(codex/gemini 병행)이 필요하다.
+- 위 셋 중 어느 것도 강하게 해당하지 않으면 → **solo-track**. 경계·모호도 solo 우선 (오버헤드가 작아 false-positive 비용이 낮다).
+
+> **리뷰는 solo 모드에서도 서브에이전트로 분리한다.** solo-track 은 *병렬 worker* 를 띄우지 않을 뿐, **review 패스는 반드시 `engram-reviewer` 서브에이전트를 spawn** 한다 — 작성자(메인)와 리뷰어를 다른 컨텍스트로 분리해 자기 승인(self-approve)을 막기 위함. 즉 "solo = 직접 작업 + 독립 리뷰어", "팀 = leader 분배 + worker + 리뷰어".
+
+**진행 (judge → proceed)**:
+- **solo 판정** → 저비용이므로 **바로 solo-track 으로 진행**.
+- **팀 판정** → 워커 N개 spawn 은 비용이 크므로 **추천 + `AskUserQuestion` 확인 후** leader 트리거. (사용자가 즉시 진행을 명시했으면 확인 생략)
+
+---
+
+## 토큰 예산 / Payload 규칙
+
+Engram MCP(v0.1.36+)는 응답 페이로드를 줄이는 인자를 제공한다. 멀티 에이전트가 반복 호출하는 환경에서 누적 토큰을 크게 좌우하므로, 모든 에이전트·스킬은 아래 규칙을 따른다.
+
+| 상황 | 규칙 |
+|------|------|
+| **오리엔테이션 호출** (`session_restore`, `board_status`) | 항상 `compact=true`. per-issue note/task 가 count 로 접히며 `active_caveats`/`active_missions` 는 그대로 보존 → 손실 없이 페이로드만 감소 |
+| **프로젝트가 정해진 경우** | `session_restore(project_key, compact=true)` — `project_key` 필터가 단일 프로젝트 컨텍스트만 끌어와 가장 큰 절감 |
+| **목록 조회** (`issue_list`, `epic_list`) | `project_key`/`status`/`sprint_id` 필터 우선. 대량이면 `limit`(+`offset`) 페이지네이션 + `projection=[...]` 로 필요한 필드만 |
+| **이력 조회** (`history_for`/`history_recent`/`history_by_agent`) | `limit` 명시 (기본 50/20, 최대 500) |
+| **실제로 소비할 본문** (작업/리뷰/회고 대상 이슈의 `issue_get`, retro 의 `note_list`) | `include_notes=true` 풀로드 **유지** — compact 시 description/goal 이 잘리므로 본문이 필요한 곳엔 쓰지 않는다 |
+| **size guard 경고 수신** | 응답의 `truncated:true` / `warnings` 가 오면 `project_key` 로 범위를 좁혀 재호출 |
+
+> 실측(Sprint260521): `session_restore` 무필터 ~680KB → `project_key` 필터 ~17.5KB(−97%) → `+compact` ~15KB(−98%).
+
+핵심 원칙: **오리엔테이션은 가볍게(compact), 실제 소비할 본문만 풀로드.**
+
+---
+
 ## 핵심 안전 장치 (v0.4.0)
 
 ### Hybrid 패턴 (state machine 분리)

@@ -48,7 +48,7 @@ tools:
 ### Step A — 스프린트 및 미션 확정
 
 ```
-session_restore(project_key)    → active_caveats, sprint_id, active_missions
+session_restore(project_key, compact=true)   → active_caveats, sprint_id, active_missions (오리엔테이션 → compact)
 sprint_current()                → 활성 스프린트 확인
 ```
 
@@ -75,13 +75,13 @@ sprint: { id, name, goal, start_date, end_date, status }
 # 해당 스프린트의 미션 목록 수집
 mission_list(sprint_id=S, include_completed=true) → 미션 목록
 
-# 모든 상태의 이슈 수집
-issue_list(sprint_id=S, project_key=P)   → 전체 이슈 목록
+# 모든 상태의 이슈 수집 — 이슈가 많으면 먼저 projection 으로 1차 스캔 후 필요한 이슈만 상세 수집
+issue_list(sprint_id=S, project_key=P, projection=["id","title","status","priority","epic_id","mission_id"])
 
-# 각 이슈별 상세 (병렬 호출 권장)
+# 각 이슈별 상세 (병렬 호출 권장) — 회고 본문이 필요하므로 issue_get/note_list 는 풀로드 유지
 for each issue in issues:
-    issue_get(id=N, include_tasks=true, include_notes=true)
-    history_for(entity_type="issue", entity_id=N)
+    issue_get(id=N, include_tasks=true, include_notes=true)   # 본문 필요 → 풀로드 (compact 금지)
+    history_for(entity_type="issue", entity_id=N, limit=30)   # 이력은 limit 명시
     note_list(issue_id=N, note_type="decision")
     note_list(issue_id=N, note_type="discovery")
     note_list(issue_id=N, note_type="blocker_detail")

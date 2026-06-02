@@ -54,8 +54,8 @@ note_resolve(<원본 노트 id>)
 ### Step 1 — 컨텍스트 적재 + 점유 확인
 
 ```
-session_restore(project_key)
-issue_get(id=<issue_id>, include_tasks=true, include_notes=true)
+session_restore(project_key, compact=true)                     # 오리엔테이션 → compact ([토큰 예산 / Payload 규칙](../../README.md#토큰-예산--payload-규칙))
+issue_get(id=<issue_id>, include_tasks=true, include_notes=true)  # 작업 대상 본문 → 풀로드 유지
 ```
 
 **필수**: `issue.assigned_agent == <self>` 확인. 다르면 `WORKER_RESULT.status="abandoned"` 즉시 보고 후 종료.
