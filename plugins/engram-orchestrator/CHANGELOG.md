@@ -4,6 +4,18 @@ engram-orchestrator 플러그인의 버전별 변경 내역입니다.
 
 ---
 
+## [0.8.0] — 2026-06-02
+
+### UI 테스트/리뷰 (Playwright MCP 번들)
+
+- **MCP 서버 번들 (`.mcp.json`)** — `playwright`(`npx -y @playwright/mcp@latest`, stdio) + `engram`(`http://127.0.0.1:3456/mcp`, http) 선언. 플러그인 활성화 시 자동 연결.
+  - **engram 번들 근거(실측)**: 번들 서버는 표준형 `mcp__<servername>__` 으로 노출됨(`--plugin-dir` 로 playwright→`mcp__playwright__*` 확인). 따라서 `engram` 번들 → `mcp__engram__*` 로, 기존 `mcp__engram__*` 참조와 동일(깨지지 않음). 사용자가 같은 endpoint 로 이미 등록한 경우 **endpoint dedup + 상위 스코프 우선** 으로 흡수됨(다른 이름 `engramtest`→같은 URL 로딩 시 `mcp__engram__` 로 흡수되는 것 실측). 전제: Desktop 앱 가동(미가동 시 연결만 끊긴 상태, 로드엔 무해). *(초기 0.8.0 초안에서 "engram 번들 부적합" 으로 판단했으나, 네임스페이스 실측 결과로 철회 — 번들이 안전하며 신규 사용자에게 자동 제공 이점.)*
+- **`ui-qa-reviewer` 서브에이전트 신설** — Playwright MCP 로 대상 URL 을 실제 브라우저에서 열어 스크린샷·접근성 스냅샷·인터랙션을 spec/AC 대비 PASS/FAIL 검증. plugin-shipped 제약상 `mcpServers` frontmatter 미사용(번들 MCP 를 세션 상속). **로그인 필요 페이지는 자동 로그인하지 않고 사용자에게 로그인 요청**(headed 브라우저 + AskUserQuestion, 자격증명 미요구/미저장), 취소 시 SKIPPED 처리.
+- **`ui-test` 스킬 신설** — 트리거 "ui 테스트/UI 검증/화면 검증". 대상 URL+spec → ui-qa-reviewer spawn → 결과 보고(이슈 연동 시 note 기록).
+- **engram-reviewer UI 분기 연동** — demo 이슈가 UI 성격(휴리스틱: 레이아웃/모달/반응형 등 키워드 + 명시 `[UI]`/`target_url` note)이고 검증 URL 확보 시 `ui-qa-reviewer` 를 spawn 해 브라우저 검증 결과를 LGTM/CHANGES_REQUESTED 판정에 종합. URL 미확보/로그인 불가 시 "UI 수동 확인 필요" caveat 후 코드 리뷰로 진행(오발동 방지). reviewer `tools` 에 `Agent` 추가.
+- **solo-track / review-issue 정합** — solo 의 Step D.5(engram-reviewer spawn)가 UI 이슈를 자동 커버(reviewer 가 ui-qa-reviewer 중첩 spawn). onboard 에 Playwright 전제(node/npx) 점검 추가.
+- version `0.7.0` → `0.8.0`.
+
 ## [0.7.0] — 2026-06-02
 
 ### 실행 모드 라우팅 (Solo vs Team) + Solo 리뷰 분리
