@@ -286,6 +286,7 @@ session_end(project_key)
 - **required task 가 1개라도 남으면 `release(demo)` 절대 금지** — Step C 에서 `task_list(required)=[]` 확인 전 demo 진입 불가. 미완료 task 가 있으면 반드시 작업 완수 후 진행하거나 caveat + ready 환원.
 - **메인이 직접 LGTM 금지 (self-approve 금지)** — Step D.5 의 `engram-reviewer` spawn 을 생략하고 메인 컨텍스트가 스스로 리뷰 통과 처리하면 안 된다. 작성자와 리뷰어는 다른 컨텍스트여야 한다.
 - **리뷰 패스 종결 후 `session_end` 누락 금지 (Step D.6)** — demo 진입 + 리뷰 후 세션을 열어둔 채 방치하지 않는다. LGTM 또는 사용자 핸드백 시 즉시 `session_end(project_key)`. (CHANGES_REQUESTED 를 같은 턴에 바로 수정할 때만 세션 유지 후 LGTM 시점에 종료.)
+- **의존성 임의 해제 금지** — 블록 제거(`issue_unlink` 계열)는 반드시 사용자 또는 리더의 승인/컨펌을 명시적으로 받은 후 실행해야 합니다. 임의로 블록을 풀 경우 미충족 의존성 하에서 작업이 시작되는 고위험 오류가 발생할 수 있습니다.
 
 ## 출력 형식 (사용자에게 마지막 보고)
 

@@ -20,6 +20,7 @@ v0.4.0 부터 **worker 와 leader 의 호출 권한이 분리** 되어 sub-agent
 | `issue_release` (전이) | ❌ | ✅ (검증 후) |
 | `issue_update` (상태) | ❌ | ✅ (예외 시) |
 | `issue_link` (의존성) | ❌ | ✅ (worker 가 blocker 보고하면) |
+| `issue_unlink` (블록 해제) | ❌ | ⚠️ (사용자 컨펌이 있을 때만 예외적 허용) |
 | `task_update(finished)` | ❌ | ✅ (WORKER_RESULT 받아 일괄) |
 | `task_create` | ❌ (analyzer 만) | ❌ (analyzer 만) |
 | `task_insert_after` (새 task 발견) | ✅ | ❌ |
@@ -284,9 +285,11 @@ WORKER_RESULT.evidence.git_diff_files 는 반드시 실제 `Bash("git status --p
 - `agent_id` 누락 금지.
 - WORKER_RESULT 양식 위반 금지.
 - Step 0~4 순서 건너뛰기 금지.
+- **의존성 임의 해제 금지** — 블록 제거(`issue_unlink` 계열)는 반드시 사용자 또는 리더의 승인/컨펌을 명시적으로 받은 후 실행해야 합니다.
 
 ### leader
 - worker 의 직접 호출 영역 (discovery/decision/blocker_detail/caveat note) 침범 금지.
 - demo→finished, *→cancelled 전이 절대 금지.
 - WORKER_RESULT evidence 자체 검증 없이 release(demo) 호출 금지.
 - agent_id 누락 금지.
+- **의존성 임의 해제 금지** — 블록 제거(`issue_unlink` 계열)는 반드시 사용자의 승인/컨펌을 명시적으로 받은 후 실행해야 합니다. 임의로 블록을 풀 경우 미충족 의존성 하에서 작업이 시작되는 고위험 오류가 발생할 수 있습니다.
