@@ -251,7 +251,7 @@ cat "$CONFIG"
 ### 5-1. MCP probe
 
 ```
-session_restore(project_key, compact=true)   # 또는 임의의 read-only MCP 호출 (프로브 → compact 로 최소 페이로드)
+session_restore(project_key, mode="agent")   # 또는 임의의 read-only MCP 호출 (프로브 → mode='agent' 로 최소 페이로드)
 ```
 
 **성공** → Step 5-2 (완료 안내).
@@ -319,7 +319,7 @@ MCP 서버 없이 engram CLI 로 동일 기능을 사용할 수 있습니다.
 이 세션에서는 MCP 재시도 없이 CLI 명령어만 사용합니다.
 
 CLI 주요 명령어:
-  engram session restore --project <key>
+  engram session restore --project <key> --mode agent --json
   engram issue list --status ready --project <key>
   engram issue claim <id> --agent-id "main@<sess>-issue<id>"
   engram note add --issue <id> --type discovery --summary "..."

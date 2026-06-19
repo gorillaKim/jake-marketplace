@@ -79,10 +79,12 @@ worker 에게 주입할 식별자:
 
 ```
 sprint_current()                                       → sprint_id
-issue_list({sprint_id, project_key, status:"ready"})
+issue_list({sprint_id, project_key, status:"ready", mode:"agent"})
 my_blocked_issues({project_key})                       → 블로커 그래프
-session_restore(project_key, compact=true)             → active_workers, active_missions (오리엔테이션 → compact)
+session_restore(project_key, mode="agent")             → active_workers, active_missions (오리엔테이션 → mode='agent')
 ```
+
+> **mode='agent' 파싱**: `issue_list`·`session_restore` 응답은 JSON 이 아니라 텍스트 요약이다. ready 큐의 `issue_id`·우선순위, `active_workers`/`stalled` 이슈 id 는 텍스트에서 파싱한다(`#N`, `ID: N`, `status:working` 패턴 인식). 이슈 본문 풀로드가 필요한 `issue_get` 만 `mode="normal"` 로 유지한다.
 
 `issue_list` 결과에서 제외:
 - `my_blocked_issues.chains` 의 이슈 (blocked).
@@ -110,7 +112,7 @@ worker_result_text = Agent(
         f"Engram issue #{N} 코드 작업.\n"
         f"project_key={project_key}\n"
         f"agent_id={worker_agent_id}  # 이미 leader 가 claim 완료\n"
-        f"work-journaling Step 0~4 따르세요. WORKER_RESULT 양식으로 보고."
+        f"team-track Step 0~4 따르세요. WORKER_RESULT 양식으로 보고."
     )
 )
 
@@ -188,16 +190,27 @@ elif not tests_ok:
 for task_id in worker_result.tasks_finished:
     task_update(id=task_id, status="finished", agent_id=engram-leader@<sess>)
 
+# WORKER_RESULT.skill_audit 연계 — leader 가 무시하지 않고 context note 에 한 줄로 옮긴다 (note #665)
+skill_audit = worker_result.skill_audit or {}
+audit_line = (
+    "\n\n[skill_audit] "
+    f"skills_unnecessary={skill_audit.get('skills_unnecessary', [])} · "
+    f"rules_applied={[r['summary'] for r in skill_audit.get('rules_applied', []) if r.get('verdict') == '적용함']} · "
+    f"skills_invoked={[s['name'] for s in skill_audit.get('skills_invoked', [])]}"
+)
+
 note_add(issue_id=N, note_type="context", author="agent",
          agent_id=engram-leader@<sess>,
          summary=merged_summary,
-         detail=worker_result.context_note.detail)
+         detail=worker_result.context_note.detail + audit_line)
 
 issue_release(id=N, agent_id=worker_agent_id, transition_to="demo")
 ```
 
 > ⚠️ release 호출 시 `agent_id` 는 **worker 의 agent_id** (점유자) — ownership 검증 통과용.
 > 검증 거부 시 `force=true, agent_id=engram-leader@<sess>` 로 강제 회수.
+
+> **skill_audit 연계 (note #665)**: worker 의 `WORKER_RESULT.skill_audit` 를 leader 가 무시하지 않는다. 위처럼 `skills_unnecessary`·`rules_applied`·`skills_invoked` 를 context note 끝에 `[skill_audit]` 한 줄로 옮겨 기록한다. 이 집계는 회고(`engram-retro`)가 `context`/`reference` 노트를 스캔할 때 수집해 "불필요하게 발동된 스킬", "실제 적용된 규칙" 통계로 환원하고, 나아가 **skill-doctor 시그널**(반복적으로 불필요 발동되는 스킬 탐지)로 활용된다. `skill_audit` 가 비어 있으면(`{}`) `[skill_audit] none` 으로 남긴다.
 
 #### status: blocked
 
@@ -224,6 +237,8 @@ issue_release(id=N, agent_id=worker_agent_id, transition_to="ready")
 
 ### 4) 정체 감시 (monitor 모드 또는 dispatch 사이클 끝) — 2단계 escalation
 
+> **session_restore 중복 호출 금지 (토큰 절약)**: 오리엔테이션(`session_restore`)은 **세션 시작(dispatch 1단계)에서 1회만** 호출한다. 거기서 받은 `active_missions`·`sprint_id`·`active_caveats` 를 리더 세션 로컬 변수에 캐시하고, stalled 감시 주기에서는 **`session_restore` 를 다시 호출하지 않는다**. 매 주기에 필요한 것은 변경분뿐이므로 `stalled_issues` 와 (질문 중복 확인용) `note_list` 만 호출한다. `monitor` 모드로 단독 기동돼 캐시가 없을 때만 예외적으로 주기 시작 시 1회 `session_restore(mode="agent")`.
+
 ```
 stalled_issues({ project_key, threshold_minutes: 10 })
 ```
@@ -233,7 +248,7 @@ stalled_issues({ project_key, threshold_minutes: 10 })
 반환된 각 stalled 이슈에 대해:
 
 1. **미션 우선순위 및 진행률 고려**:
-   - `session_restore`로 수집한 `active_missions` 내 `progress_rate`(미션 진행률)를 참조합니다.
+   - **세션 시작 시 1회 캐시한** `active_missions` 내 `progress_rate`(미션 진행률)를 참조합니다 (stalled 주기에서 `session_restore` 재호출 금지 — 캐시 재사용).
    - 진행률이 낮거나 핵심 미션에 해당하는 이슈가 정체 중인 경우, 질문 작성 시 긴급도를 강조하여 작성하고 모니터링 주기를 단축할 수 있습니다.
 2. **중복 질문 확인** — `note_list(issue_id=N, note_type="comment", include_resolved=false)` 에서 이미 `summary` 가 `"Q: stalled"` 로 시작하는 comment 가 있으면 단계 2 로 넘어감.
 3. **자체 1차 점검** — `history_by_agent(agent_id=<해당 워커>, limit=5)`:
@@ -288,7 +303,7 @@ note_add(
 
 | Actor | 답변 방법 | 비고 |
 |-------|----------|------|
-| 점유 워커 (claude/codex/gemini) | `note_add(comment, agent_id=<self>)` + `note_resolve` | 다음 leader 사이클에서 같은 이슈로 재 spawn 됐을 때만 가능. work-journaling Step 2 의 incoming check 가 트리거. |
+| 점유 워커 (claude/codex/gemini) | `note_add(comment, agent_id=<self>)` + `note_resolve` | 다음 leader 사이클에서 같은 이슈로 재 spawn 됐을 때만 가능. team-track Step 2 의 incoming check 가 트리거. |
 | 사용자 (데스크톱) | `note_add(comment, author="user")` + `note_resolve` 또는 직접 release | 가장 흔한 응답자 |
 | leader 본인 | 단계 1.2 의 `history_by_agent` 점검에서 agent 가 다른 이슈에서 활동 중 확인 → 질문 코멘트 추가하지 않고 caveat 만 | escalation 보류 |
 
@@ -310,7 +325,7 @@ worker spawn 시 issue description 키워드로 모델 분기:
 ```
 keywords = description.lower()
 if "test" in keywords or "테스트" in keywords:
-    cmd = f"omc team 1:codex 'Engram #{N} 코드 작업. agent_id=codex-gpt5@<sess>-issue{N}. work-journaling Step 0~4. WORKER_RESULT 보고.'"
+    cmd = f"omc team 1:codex 'Engram #{N} 코드 작업. agent_id=codex-gpt5@<sess>-issue{N}. team-track Step 0~4. WORKER_RESULT 보고.'"
     worker_result_text = Bash(cmd)
 elif "prototype" in keywords or "프로토타입" in keywords:
     cmd = f"omc team 1:gemini ..."
@@ -320,7 +335,7 @@ else:
 ```
 
 모든 모델이 동일한 `WORKER_RESULT` 양식으로 보고하면 leader 가 동일하게 검증·처리.
-codex/gemini 가 work-journaling 안 따라도 leader 의 evidence 자체 검증이 잡아냄.
+codex/gemini 가 team-track 안 따라도 leader 의 evidence 자체 검증이 잡아냄.
 
 ## 호출 결과 인용 의무
 

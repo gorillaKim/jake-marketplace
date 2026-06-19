@@ -1,9 +1,11 @@
 ---
-name: work-journaling
-description: Engram 이슈를 처리하는 worker + leader 가 따르는 표준 절차. v0.4.0 부터 worker = 코드 작업 + note 직접 / leader = 상태 전이 + evidence 자체 검증으로 호출 권한 분리. WORKER_RESULT 양식으로 인계. 트리거 — "engram 작업", "issue 처리", "워커 시작", "이슈 작업", "작업 기록", "journaling".
+name: team-track
+description: 팀(analyzer→leader→worker)으로 Engram 이슈를 처리하는 표준 절차 — solo-track 의 팀 카운터파트. v0.4.0 부터 worker = 코드 작업 + note 직접 / leader = 상태 전이 + evidence 자체 검증으로 호출 권한 분리. WORKER_RESULT 양식으로 인계. 트리거 — "team-track", "팀 처리", "팀으로 이슈", "engram 작업", "issue 처리", "워커 시작", "이슈 작업", "작업 기록".
 ---
 
-# Work Journaling (v0.4.0 — Hybrid)
+# Team Track (v0.4.0 — Hybrid)
+
+> 팀(leader+worker) 이슈 처리 표준 절차. 메인 에이전트 단독 처리는 [`solo-track`](../solo-track/SKILL.md). (구 이름: `work-journaling`)
 
 ## 목적
 
@@ -54,7 +56,7 @@ note_resolve(<원본 노트 id>)
 ### Step 1 — 컨텍스트 적재 + 점유 확인
 
 ```
-session_restore(project_key, compact=true)                     # 오리엔테이션 → compact ([토큰 예산 / Payload 규칙](../../README.md#토큰-예산--payload-규칙))
+session_restore(project_key, mode="agent")                     # 오리엔테이션 → mode='agent' ([토큰 예산 / Payload 규칙](../../README.md#토큰-예산--payload-규칙))
 issue_get(id=<issue_id>, include_tasks=true, include_notes=true)  # 작업 대상 본문 → 풀로드 유지
 ```
 
@@ -148,7 +150,7 @@ note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
 
 적절 발동 예시:
 ```
-summary: "[SKILL] work-journaling — 호출, 적절"
+summary: "[SKILL] team-track — 호출, 적절"
 detail: |
   목적: 워커 표준 절차 확인
   결과: Step 0-4 흐름 재확인
@@ -194,7 +196,7 @@ note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
 summary: "[EVALUATION] engram-orchestrator 스킬 사용 무난하나 토큰 소모 개선 필요"
 detail: |
   하네스 평가: macOS 로컬 빌드 환경으로 테스트 속도 매우 빠름.
-  사용한 스킬 평가: work-journaling 스킬이 에이전트의 오작동을 차단하는 데 매우 적절했음.
+  사용한 스킬 평가: team-track 스킬이 에이전트의 오작동을 차단하는 데 매우 적절했음.
   Engram 사용 피드백: engram-mcp가 tools schema를 모두 로드하는 과정에서 토큰 소모가 다소 큼.
   개선 제안: mcp schema 크기를 최적화하거나 client 측에 캐싱 로직 도입 필요.
 ```

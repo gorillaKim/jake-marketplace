@@ -48,8 +48,8 @@ tools:
 ### project_key 결정 절차 (없을 때)
 
 1. **git remote 매칭** — `Bash("git config --get remote.origin.url")` → URL 의 repo 이름 1차 후보.
-2. **`session_restore(compact=true)` 호출** → 활성 프로젝트 단 1개면 채택. (탐색 단계라 project_key 미정 — compact 로 페이로드만 최소화)
-3. **`board_status()` 호출** → `projects` 배열에서 1차 후보와 일치하는 key 채택.
+2. **`session_restore(mode="agent")` 호출** → 활성 프로젝트 단 1개면 채택. (탐색 단계라 project_key 미정 — `mode="agent"` 로 페이로드만 최소화)
+3. **`board_status(mode="agent")` 호출** → `projects` 배열에서 1차 후보와 일치하는 key 채택.
 4. 모호하면 사용자에게 후보 보여주고 1개 질의 (`AskUserQuestion`).
 
 ## agent_id 명명 규칙 (필수)
@@ -63,10 +63,12 @@ engram-analyzer@<sessionShortId>
 
 ## 작업 흐름
 
-1. **컨텍스트 파악**: `session_restore(project_key, compact=true)` + `sprint_current()` 로 활성 스프린트 및 active_missions(미션 목록)을 확인합니다. (오리엔테이션 호출은 항상 `compact=true` — [토큰 예산 / Payload 규칙](../README.md#토큰-예산--payload-규칙) 참조)
+1. **컨텍스트 파악**: `session_restore(project_key, mode="agent")` + `sprint_current()` 로 활성 스프린트 및 active_missions(미션 목록)을 확인합니다. (오리엔테이션 호출은 항상 `mode="agent"` — [토큰 예산 / Payload 규칙](../README.md#토큰-예산--payload-규칙) 참조)
+
+   > **조회 호출 규약 (mode='agent')**: 모든 목록성 조회(`session_restore`, `mission_list`, `epic_list`, `issue_list`, `board_status`)는 `mode="agent"` 로 호출해 LLM 친화적 텍스트 요약을 받는다. 이 응답은 JSON 이 아니라 **텍스트**이므로 `epic_id`·`mission_id`·`issue_id` 같은 식별자는 텍스트에서 파싱한다(예: `#7`, `ID: 7`, `epic_id=7` 패턴 인식). 본문 풀로드가 필요한 `issue_get`·`note_get` 만 `mode="normal"` 로 유지한다.
 2. **미션 및 에픽 매핑**:
-   - 대규모의 기획이나 여러 프로젝트에 걸친 변경일 경우, 기존 미션 중 적합한 미션이 있는지 `mission_list`로 조회합니다. 없으면 `mission_create(sprint_id, title, description)`로 미션을 신규 수립합니다.
-   - `epic_list(project_key)` 로 후보 에픽을 조회합니다.
+   - 대규모의 기획이나 여러 프로젝트에 걸친 변경일 경우, 기존 미션 중 적합한 미션이 있는지 `mission_list(mode="agent")`로 조회합니다. 없으면 `mission_create(sprint_id, title, description)`로 미션을 신규 수립합니다.
+   - `epic_list(project_key, mode="agent")` 로 후보 에픽을 조회합니다.
    - 적합한 에픽이 없다면 `epic_create(project_key, title, description, mission_id, sprint_id)`를 호출하여 에픽을 새로 생성하고 적절한 미션/스프린트와 연결합니다. (ADR-0014에 따라 에픽이 스프린트의 SSOT입니다.)
 3. **이슈 분할**: 자연스러운 경계(2~8 시간 단위)로 작업을 분할합니다.
    각 이슈는 `issue_create(epic_id, title, description, priority)`로 생성합니다.

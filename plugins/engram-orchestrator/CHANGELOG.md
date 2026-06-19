@@ -4,6 +4,32 @@ engram-orchestrator 플러그인의 버전별 변경 내역입니다.
 
 ---
 
+## [0.9.0] — 2026-06-19
+
+> 토큰 효율(`mode="agent"` 마이그레이션) + 에이전트/스킬 동작 정확도·사용성 개선. (mission #60)
+
+### Changed
+
+- **MCP 조회 호출 `compact=true` → `mode="agent"` 전면 마이그레이션** — 5개 에이전트(engram-analyzer/leader/worker/reviewer/retro)와 7개 스킬(team-track/solo-track/onboard/review-issue/sprint-retro/mission-plan/intake-as-issue)의 `session_restore`·`*_list` 오리엔테이션/목록 호출을 `mode="agent"`(LLM 친화 텍스트 요약)로 정렬. 본문 풀로드가 필요한 `issue_get`/`note_get` 은 `mode="normal"` 유지(2단계 페치 패턴). 플러그인 전체 `compact=true`/`--compact` 잔존 0건. CLI fallback 예시도 `engram session restore --mode agent --json` 으로 갱신. (epic #181)
+- **`work-journaling` 스킬 → `team-track` 리네이밍** — 팀(analyzer→leader→worker) 이슈 처리 표준 절차 = `solo-track` 의 팀 카운터파트임을 이름으로 명확화(사용자 피드백 #2024). 디렉터리(`skills/team-track/`)·frontmatter·운영 참조 일괄 갱신. **호출 ID 변경(breaking)**: `/engram-orchestrator:work-journaling` → `/engram-orchestrator:team-track`. (아래 과거 버전 항목의 `work-journaling` 언급은 당시 실제 명칭이므로 보존.)
+
+### Added
+
+- **solo-track `Step D.6 — 세션 종료`** — 리뷰 패스(D.5) 종결 후 결과와 무관하게 `session_end` 를 호출하도록 명시(좀비 세션/`agent_id` 누적 방지). LGTM/CHANGES_REQUESTED 분기별 종료 시점 표 + 금지 항목 추가. (epic #183)
+- **engram-leader: `WORKER_RESULT.skill_audit` → context note 연계** — worker 가 채우던 `skill_audit`(skills_unnecessary/rules_applied/skills_invoked)를 leader 가 context note 끝에 `[skill_audit]` 한 줄로 기록 → 회고(engram-retro)/skill-doctor 시그널로 환원.
+- **intake-as-issue: 경계 케이스 예시 카드(6종)** — 2~3 task/한 PR 중간 경계에서 solo vs team 오판(false-positive)을 줄이는 구체 라우팅 표.
+- **ui-qa-reviewer: 로그인 SKIP fallback 정책(Step 1.6)** — SKIP 시 spec 을 `code_reviewable`/`manual_check_required` 로 분류 반환(verdict=null). 로그인 SKIP 자체는 CHANGES_REQUESTED 사유 아님(오발동 방지). 결과 JSON 필드 추가, engram-reviewer 와 양방향 정합.
+
+### Performance
+
+- **engram-leader stalled 감시 주기 `session_restore` 중복 호출 제거** — 오리엔테이션은 세션 시작 1회만 호출·캐시, stalled 주기는 `stalled_issues`+`note_list` 만 호출(반복 주기당 토큰 절감).
+
+### Migration
+
+- version `0.8.0` → `0.9.0`.
+
+---
+
 ## [0.8.0] — 2026-06-02
 
 ### UI 테스트/리뷰 (Playwright MCP 번들)

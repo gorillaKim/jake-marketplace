@@ -118,7 +118,7 @@ AskUserQuestion(
 
 ```
 Bash("git config --get remote.origin.url") → repo 이름 추출
-session_restore(compact=true)               → 활성 프로젝트 목록에서 매칭 (오리엔테이션 → compact)
+session_restore(mode="agent")               → 활성 프로젝트 목록에서 매칭 (오리엔테이션 → mode='agent')
 ```
 
 매칭 실패 시:

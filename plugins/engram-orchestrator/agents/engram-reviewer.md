@@ -48,7 +48,7 @@ tools:
 ### Step A — 컨텍스트 수집
 
 ```
-session_restore(project_key, compact=true)   → active_caveats, sprint_id (오리엔테이션 → compact; 리뷰 대상 issue_get 은 풀로드 유지)
+session_restore(project_key, mode="agent")   → active_caveats, sprint_id (오리엔테이션 → mode='agent'; 리뷰 대상 issue_get 은 풀로드 유지)
 ```
 
 **단일 이슈 모드** (`issue_id` 명시 시):
@@ -58,9 +58,9 @@ issue_get(id=issue_id, include_tasks=true, include_notes=true)
 
 **batch 모드** (`issue_id` 생략 시):
 ```
-epic_list(project_key)
+epic_list(project_key, mode="agent")
 # 각 에픽별
-issue_list(sprint_id=<active_sprint>, epic_id=<E>, status="demo")
+issue_list(sprint_id=<active_sprint>, epic_id=<E>, status="demo", mode="agent")
 # 이슈마다 Step B~D 반복
 ```
 
@@ -76,13 +76,13 @@ issue_list(sprint_id=<active_sprint>, epic_id=<E>, status="demo")
 **1. 이슈 컨텍스트 로드**
 
 ```
-issue_get(id=N, include_tasks=true, include_notes=true)
+issue_get(id=N, include_tasks=true, include_notes=true)   # 리뷰 본문 → mode="normal"(기본) 풀로드 유지
 history_for(entity_type="issue", entity_id=N)
-note_list(issue_id=N, note_type="context")          → worker 의 검토 가이드
-note_list(issue_id=N, note_type="decision")
-note_list(issue_id=N, note_type="discovery")
-note_list(issue_id=N, note_type="caveat", include_resolved=false)
-task_list(issue_id=N)
+note_list(issue_id=N, note_type="context", mode="agent")          → worker 의 검토 가이드
+note_list(issue_id=N, note_type="decision", mode="agent")
+note_list(issue_id=N, note_type="discovery", mode="agent")
+note_list(issue_id=N, note_type="caveat", include_resolved=false, mode="agent")
+task_list(issue_id=N, mode="agent")
 task_test_list(issue_id=N)                           → 테스트 체크리스트 확인
 ```
 
