@@ -542,20 +542,33 @@ history_for({entity_type: "issue", entity_id: 128})
 
 ## 토큰 예산 / Payload 규칙
 
-Engram MCP(v0.1.36+)는 응답 페이로드를 줄이는 인자를 제공한다. 멀티 에이전트가 반복 호출하는 환경에서 누적 토큰을 크게 좌우하므로, 모든 에이전트·스킬은 아래 규칙을 따른다.
+Engram MCP 응답 페이로드는 멀티 에이전트가 반복 호출하는 환경에서 누적 토큰을 크게 좌우한다. 모든 에이전트·스킬은 아래 **조회 호출 mode 규약**과 payload 절감 규칙을 따른다. **이 섹션이 mode 규약의 단일 출처(SSOT)** 이며, 각 에이전트·스킬 문서는 규칙을 재서술하지 않고 이 섹션을 링크 참조한다.
+
+### 조회 호출 mode 규약 (agent vs normal)
+
+조회·변경 MCP 도구는 `mode` 인자로 응답 형식을 고른다. 구버전 `compact=true` 는 `mode="agent"` 로 대체되었다 (epic #181 마이그레이션 완료).
+
+| 호출 유형 | mode | 이유 |
+|----------|------|------|
+| **목록·오리엔테이션 조회** — `session_restore`, `board_status`, `mission_list`, `epic_list`, `issue_list`, `note_list`, `task_list`, `history_*` | `mode="agent"` | LLM 친화 텍스트 요약. 페이로드 최소. 식별자는 텍스트에서 파싱 |
+| **본문 풀로드** — 작업/리뷰/회고 대상의 `issue_get`, `note_get` | `mode="normal"` (기본) | description/goal/detail 전체가 필요 → 요약하지 않고 풀로드 |
+
+**식별자 파싱**: `mode="agent"` 응답은 JSON 이 아니라 **텍스트**다. `epic_id`·`mission_id`·`issue_id`·워커 점유 상태는 텍스트 패턴으로 파싱한다 — 예: `#7`, `ID: 7`, `epic_id=7`, `status:working`. 본문 풀로드가 필요한 `issue_get`·`note_get` 만 `mode="normal"` 로 둔다.
+
+핵심 원칙: **오리엔테이션·목록은 가볍게(`mode="agent"`), 실제 소비할 본문만 풀로드(`mode="normal"`).**
+
+### Payload 절감 규칙
 
 | 상황 | 규칙 |
 |------|------|
-| **오리엔테이션 호출** (`session_restore`, `board_status`) | 항상 `compact=true`. per-issue note/task 가 count 로 접히며 `active_caveats`/`active_missions` 는 그대로 보존 → 손실 없이 페이로드만 감소 |
-| **프로젝트가 정해진 경우** | `session_restore(project_key, compact=true)` — `project_key` 필터가 단일 프로젝트 컨텍스트만 끌어와 가장 큰 절감 |
+| **오리엔테이션 호출** (`session_restore`, `board_status`) | 항상 `mode="agent"`. per-issue note/task 가 count 로 접히며 `active_caveats`/`active_missions` 는 그대로 보존 → 손실 없이 페이로드만 감소 |
+| **프로젝트가 정해진 경우** | `session_restore(project_key, mode="agent")` — `project_key` 필터가 단일 프로젝트 컨텍스트만 끌어와 가장 큰 절감 |
 | **목록 조회** (`issue_list`, `epic_list`) | `project_key`/`status`/`sprint_id` 필터 우선. 대량이면 `limit`(+`offset`) 페이지네이션 + `projection=[...]` 로 필요한 필드만 |
 | **이력 조회** (`history_for`/`history_recent`/`history_by_agent`) | `limit` 명시 (기본 50/20, 최대 500) |
-| **실제로 소비할 본문** (작업/리뷰/회고 대상 이슈의 `issue_get`, retro 의 `note_list`) | `include_notes=true` 풀로드 **유지** — compact 시 description/goal 이 잘리므로 본문이 필요한 곳엔 쓰지 않는다 |
+| **실제로 소비할 본문** (작업/리뷰/회고 대상 이슈의 `issue_get`, retro 의 `note_list`) | `mode="normal"`(기본) 풀로드 **유지** — `mode="agent"` 는 description/goal 을 요약하므로 본문이 필요한 곳엔 쓰지 않는다 |
 | **size guard 경고 수신** | 응답의 `truncated:true` / `warnings` 가 오면 `project_key` 로 범위를 좁혀 재호출 |
 
-> 실측(Sprint260521): `session_restore` 무필터 ~680KB → `project_key` 필터 ~17.5KB(−97%) → `+compact` ~15KB(−98%).
-
-핵심 원칙: **오리엔테이션은 가볍게(compact), 실제 소비할 본문만 풀로드.**
+> 실측(Sprint260521): `session_restore` 무필터 ~680KB → `project_key` 필터 ~17.5KB(−97%) → `+mode="agent"` ~15KB(−98%).
 
 ---
 
@@ -599,6 +612,15 @@ leader.Bash("git status --porcelain | awk '{print $2}'") = []   # 실제
 ### Demo Gate (3단 검증)
 
 worker Step 3 자체 수집 → WORKER_RESULT.evidence → leader 자체 재호출 검증. 한 단계라도 실패하면 demo 전이 차단.
+
+**동일 파일 다중 이슈 hunk 귀속** (SSOT): 커밋 없이 여러 이슈가 같은 파일을 수정하면 `git status` 는 파일 단위로만 누적돼 이슈별 diff 경계가 사라진다. 각 이슈의 context note "변경 파일" 항목은 **그 이슈가 담당한 hunk(섹션/심볼/요지)** 를 명시하고, 같은 파일을 만진 다른 이슈가 있으면 그 경계를 함께 표기한다:
+
+```
+- <path> → #<thisIssue> hunk: <섹션/심볼/요지>   (공유: #<other> 는 <다른 섹션>)
+- <path> (이유)                                  # 단독 파일은 종전 형식 그대로
+```
+
+이렇게 하면 reviewer/사용자가 누적 `git diff` 속에서 이슈별 변경분을 분리해 검토할 수 있다. (근거 #2005)
 
 ## 상태 전이 가드
 

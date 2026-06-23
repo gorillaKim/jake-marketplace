@@ -118,7 +118,7 @@ AskUserQuestion("어느 프로젝트의 회고를 생성할까요?")
 7. **반복 주의사항** — 2+ 회 등장 caveat 패턴
 8. **재발 방지 항목** — 패턴 → 개선 제안
 9. **다음 스프린트 액션 아이템** — 이월/선행해결/프로세스개선
-10. **스킬 및 하네스 피드백 (Harness & Skill Feedback)** — 에이전트들이 작업 과정에서 기록한 하네스 성능, 스킬 적절성 및 Engram에 대한 평가 요약
+10. **스킬 및 하네스 피드백 (Harness & Skill Feedback)** — 에이전트들이 작업 과정에서 기록한 하네스 성능, 스킬 적절성 및 Engram에 대한 평가 요약 (`note_type="evaluation"` 로 수집 + 레거시 `reference`+`[EVALUATION]` 접두어 fallback)
 
 ## 출력 예시
 

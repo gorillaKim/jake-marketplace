@@ -71,6 +71,8 @@ sprint: { id, name, goal, start_date, end_date, status }
 
 ### Step B — 미션 및 이슈 전체 수집 (병렬)
 
+> 조회 mode 규약(목록·오리엔테이션=`agent` · 본문 풀로드=`normal`)의 단일 출처: [README — 조회 호출 mode 규약](../README.md#조회-호출-mode-규약-agent-vs-normal).
+
 ```
 # 해당 스프린트의 미션 목록 수집
 mission_list(sprint_id=S, include_completed=true, mode="agent") → 미션 목록
@@ -86,7 +88,8 @@ for each issue in issues:
     note_list(issue_id=N, note_type="discovery", mode="agent")
     note_list(issue_id=N, note_type="blocker_detail", mode="agent")
     note_list(issue_id=N, note_type="caveat", mode="agent")
-    note_list(issue_id=N, note_type="reference", mode="agent")
+    note_list(issue_id=N, note_type="evaluation", mode="agent")    # 평가 노트 (신규 타입, 코어 P1)
+    note_list(issue_id=N, note_type="reference", mode="agent")     # [SKILL]/[RULE AUDIT] + 레거시 [EVALUATION] fallback
 ```
 
 이슈 분류:
@@ -134,7 +137,8 @@ for each issue in issues:
 - scope=project/epic 인 broadcast caveat 별도 표시
 
 **스킬 및 하네스 피드백 분석 (EVALUATION)**:
-- `note_type="reference"` 중 `summary`가 `[EVALUATION]`으로 시작하는 노트를 수집합니다.
+- 평가 노트는 `note_list(note_type="evaluation")` 로 수집합니다. 에픽 단위 회고는 `note_list(epic_id=N, note_type="evaluation", rollup=true, mode="agent")` 로 에픽 하위 평가 노트를 한 번에 집계합니다 — `[EVALUATION]` 텍스트 풀스캔 불필요(코어 P1·P2).
+- **레거시 fallback**: v0.10.0 이전 평가 노트는 `note_type="reference"` + `summary` 의 `[EVALUATION]` 접두어로 저장돼 있으므로, `note_type="reference"` 결과 중 `[EVALUATION]` 접두어 노트도 병행 수집합니다(코어 백필 완료 전까지).
 - 각 에이전트들이 평가한 하네스 안정성, 스킬 사용 적절성, Engram의 토큰 소모량 및 인터페이스 상의 애로사항을 항목별로 분류하고 요약합니다.
 
 **액션 아이템 도출 규칙**:

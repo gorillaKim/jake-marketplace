@@ -41,7 +41,7 @@
       "name": "engram-orchestrator",
       "source": "./plugins/engram-orchestrator",
       "description": "Engram MCP 위에서 동작하는 이슈 분석/리딩/처리 에이전트 오케스트레이션. analyzer가 작업을 이슈/태스크/blocks 링킹으로 분할하고, leader가 ready 큐를 worker에게 분배하며 stalled 이슈를 감시한다. intake/team-track 스킬이 작업 요청과 작업 기록 흐름을 표준화한다.",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "category": "developer-tools"
     }
   ]

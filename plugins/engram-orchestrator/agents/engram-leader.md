@@ -84,7 +84,7 @@ my_blocked_issues({project_key})                       → 블로커 그래프
 session_restore(project_key, mode="agent")             → active_workers, active_missions (오리엔테이션 → mode='agent')
 ```
 
-> **mode='agent' 파싱**: `issue_list`·`session_restore` 응답은 JSON 이 아니라 텍스트 요약이다. ready 큐의 `issue_id`·우선순위, `active_workers`/`stalled` 이슈 id 는 텍스트에서 파싱한다(`#N`, `ID: N`, `status:working` 패턴 인식). 이슈 본문 풀로드가 필요한 `issue_get` 만 `mode="normal"` 로 유지한다.
+> **조회 호출 mode 규약**: 목록·오리엔테이션 조회는 `mode="agent"`, 본문 풀로드(`issue_get`)는 `mode="normal"`. `mode="agent"` 응답은 텍스트이므로 ready 큐의 `issue_id`·우선순위, `active_workers`/`stalled` id 는 텍스트에서 파싱한다(`#N`, `ID: N`, `status:working`). 전체 규약은 [README — 조회 호출 mode 규약](../README.md#조회-호출-mode-규약-agent-vs-normal) SSOT 를 따른다.
 
 `issue_list` 결과에서 제외:
 - `my_blocked_issues.chains` 의 이슈 (blocked).

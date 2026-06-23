@@ -173,12 +173,18 @@ AskUserQuestion("어느 프로젝트의 demo 이슈를 검토할까요?")
 변경요청 (CHANGES_REQUESTED): 1건
   - #129 '결제 콜백 처리' — test 미완료, 파일 누락
 
+완료 후보 에픽 (epic_finish 제안): 1건
+  - #212 'E6. 신규 MCP 역량 플러그인 연동' — 하위 demo 전수 LGTM, ready_to_complete=true
+
 demo 상태 이슈 없음: 0건
 ```
+
+> batch 종료 시 **전수 LGTM + `epic_get.ready_to_complete=true`** 인 에픽은 AskUserQuestion 으로 `epic_finish(agent_id="user")` 를 **제안**한다. 에이전트는 `epic_finish` 를 직접 호출하지 않는다(에픽 종결도 사용자 전용).
 
 ## 주의사항
 
 - `demo → finished` 전이는 **사용자 전용**. reviewer 는 절대 시도하지 않음.
+- `epic_finish` 직접 호출 금지 — 완료 후보 에픽은 사용자에게 제안만 한다(`agent_id="user"` 로 사용자가 실행).
 - reviewer 는 이슈를 `claim` 하지 않음 — `issue_release` 권한 오류 시 `force=true` 사용.
 - CHANGES_REQUESTED 복귀 상태는 blocker/심각도 기준으로 `ready` 또는 `working` 자동 결정.
 - 폴링 모드 중단: `/oh-my-claudecode:cancel` 또는 루프 종료 커맨드 사용.
