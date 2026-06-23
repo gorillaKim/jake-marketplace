@@ -63,9 +63,9 @@ engram-analyzer@<sessionShortId>
 
 ## 작업 흐름
 
-1. **컨텍스트 파악**: `session_restore(project_key, mode="agent")` + `sprint_current()` 로 활성 스프린트 및 active_missions(미션 목록)을 확인합니다. (오리엔테이션 호출은 항상 `mode="agent"` — [토큰 예산 / Payload 규칙](../README.md#토큰-예산--payload-규칙) 참조)
+1. **컨텍스트 파악**: `session_restore(project_key, mode="agent")` + `sprint_current()` 로 활성 스프린트 및 active_missions(미션 목록)을 확인합니다.
 
-   > **조회 호출 규약 (mode='agent')**: 모든 목록성 조회(`session_restore`, `mission_list`, `epic_list`, `issue_list`, `board_status`)는 `mode="agent"` 로 호출해 LLM 친화적 텍스트 요약을 받는다. 이 응답은 JSON 이 아니라 **텍스트**이므로 `epic_id`·`mission_id`·`issue_id` 같은 식별자는 텍스트에서 파싱한다(예: `#7`, `ID: 7`, `epic_id=7` 패턴 인식). 본문 풀로드가 필요한 `issue_get`·`note_get` 만 `mode="normal"` 로 유지한다.
+   > **조회 호출 mode 규약**: 목록·오리엔테이션 조회(`session_restore`, `mission_list`, `epic_list`, `issue_list`, `board_status`)는 `mode="agent"`, 본문 풀로드(`issue_get`·`note_get`)는 `mode="normal"`. 식별자 텍스트 파싱(`#7`, `ID: 7`, `epic_id=7`) 포함 전체 규약은 [README — 조회 호출 mode 규약](../README.md#조회-호출-mode-규약-agent-vs-normal) SSOT 를 따른다.
 2. **미션 및 에픽 매핑**:
    - 대규모의 기획이나 여러 프로젝트에 걸친 변경일 경우, 기존 미션 중 적합한 미션이 있는지 `mission_list(mode="agent")`로 조회합니다. 없으면 `mission_create(sprint_id, title, description)`로 미션을 신규 수립합니다.
    - `epic_list(project_key, mode="agent")` 로 후보 에픽을 조회합니다.
@@ -73,6 +73,7 @@ engram-analyzer@<sessionShortId>
 3. **이슈 분할**: 자연스러운 경계(2~8 시간 단위)로 작업을 분할합니다.
    각 이슈는 `issue_create(epic_id, title, description, priority)`로 생성합니다.
    - **주의**: ADR-0014에 따라 이슈 생성(`issue_create`) 시 `sprint_id` 및 `mission_id` 인자는 전달하지 않습니다 (부모 에픽으로부터 자동 상속됨).
+   - **파일·라인 귀속 검증 (필수)**: 자동생성한 description/goal 이 특정 파일·라인·심볼을 지목하면(예: "X.md L322 의 CLI fallback 예시 수정"), `issue_create` **전에** `Bash("grep -n '<심볼/문구>' <경로>")`(또는 `rg`)로 그 귀속이 실제와 일치하는지 확인한다. 불일치 시 실제 위치로 **보정**하고, 확정 불가하면 description 에 `[귀속 미검증: <추정 위치>]` 를 표기한 뒤 `note_add(note_type="caveat")` 로 남긴다. 드래프트가 엉뚱한 파일을 지목해 워커가 헛수고하는 회귀(#2022·#662) 방지.
 4. **태스크 계획**: `task_create(issue_id, title)` 로 다수 등록. 순서가 중요한 task 는 생성 순서로.
 5. **선후 관계**: A 완료 후 B 시작 가능하면 `issue_link(source_id=A, target_id=B, link_type="blocks")`.
 6. **분석 근거 보존**: `note_add(issue_id, note_type="decision", author="agent", agent_id=<self>, summary=..., detail=...)`.
@@ -111,6 +112,7 @@ issue_create → {"id":7, "status":"required"}  ⇒ issue_id=7
 - 한 이슈 = 한 PR 정도.
 - 제목은 결과물 중심 ("결제 콜백 URL 검증 추가"), 절차 중심 ("X 분석") 금지.
 - description 에는 "왜" + "완료 조건" 함께.
+- description 이 파일·라인·심볼을 지목하면 자동생성 전 `grep`/`rg` 로 실제 존재를 검증한다(불일치 시 보정 또는 `[귀속 미검증]` 표기). 근거 #2022.
 - 우선순위 critical/high 남발 금지. 다른 이슈를 막는 경우만 high+.
 
 ## 출력 형식 (호출자에게)

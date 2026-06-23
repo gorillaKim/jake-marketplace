@@ -61,7 +61,7 @@ issue_get(id=issue_id, include_tasks=true, include_notes=true)
 epic_list(project_key, mode="agent")
 # 각 에픽별
 issue_list(sprint_id=<active_sprint>, epic_id=<E>, status="demo", mode="agent")
-# 이슈마다 Step B~D 반복
+# 이슈마다 Step B~D 반복 → 에픽별 LGTM/CHANGES_REQUESTED/보류 집계 (완료 제안용, 아래 '에픽 완료 제안' 참조)
 ```
 
 이슈가 없으면:
@@ -75,8 +75,10 @@ issue_list(sprint_id=<active_sprint>, epic_id=<E>, status="demo", mode="agent")
 
 **1. 이슈 컨텍스트 로드**
 
+> 조회 mode 규약(목록·오리엔테이션=`agent` · 본문 풀로드=`normal`)의 단일 출처: [README — 조회 호출 mode 규약](../README.md#조회-호출-mode-규약-agent-vs-normal).
+
 ```
-issue_get(id=N, include_tasks=true, include_notes=true)   # 리뷰 본문 → mode="normal"(기본) 풀로드 유지
+issue_get(id=N, include_tasks=true, include_notes=true)   # 리뷰 본문 → mode="normal"(기본) 풀로드
 history_for(entity_type="issue", entity_id=N)
 note_list(issue_id=N, note_type="context", mode="agent")          → worker 의 검토 가이드
 note_list(issue_id=N, note_type="decision", mode="agent")
@@ -255,8 +257,33 @@ issue_release(
 보류:
   - #<N4> '<title>' — 판정 불분명, 사용자 확인 후 처리
 
+완료 후보 에픽 (epic_finish 제안):
+  - #<E> '<title>' — 하위 demo 이슈 전수 LGTM
+
 demo 상태 이슈 없음: 0건
 ```
+
+## batch 모드 — 에픽 완료 제안 (epic_finish · 코어 P3/P4)
+
+batch 검토가 끝나면, **전수 LGTM 으로 완료 후보가 된 에픽**을 식별해 사용자에게 `epic_finish` 를 제안한다. 에이전트는 `epic_finish` 를 직접 호출하지 않는다 — `demo → finished` 와 마찬가지로 에픽 종결도 **사용자 전용**이다.
+
+**완료 후보 식별** (검토한 각 에픽 E):
+```
+epic_get(id=E)                        → ready_to_complete (코어 P4 완료 제안 플래그)
+issue_list(epic_id=E, mode="agent")   → 에픽 잔여 이슈 상태 분포
+```
+다음을 **모두** 만족하면 완료 후보:
+- 이번 batch 에서 그 에픽 하위 demo 이슈가 **전부 LGTM** (CHANGES_REQUESTED·보류 0건), 그리고
+- `epic_get.ready_to_complete == true` (또는 이번 LGTM 분을 사용자가 finished 처리하면 `finished`/`cancelled` 아닌 이슈가 남지 않음).
+
+**제안** (완료 후보 에픽마다 1회):
+```
+AskUserQuestion(
+  "에픽 #E '<title>' 의 demo 이슈가 모두 LGTM 입니다. 칸반에서 해당 이슈들을 finished 로 옮긴 뒤 epic_finish(epic_id=E, agent_id='user') 로 에픽을 종결할까요?",
+  options: ["종결 절차 안내", "보류"])
+```
+- 에이전트는 **안내만** 한다. 실제 `epic_finish` 호출은 사용자가 `agent_id="user"` 로 수행한다.
+- `ready_to_complete == false` 거나 LGTM 외 판정(CHANGES_REQUESTED·보류)이 1건이라도 있으면 제안하지 않는다.
 
 ## MCP 연결 실패 처리 (note #93)
 
@@ -299,6 +326,7 @@ engram issue release <id> --force \
 
 - `issue_update(status="finished")` — 절대 금지. 사용자 전용.
 - `issue_update(status="cancelled")` — 절대 금지. 사용자 전용.
+- `epic_finish` 직접 호출 — 절대 금지. 완료 후보 에픽은 AskUserQuestion 으로 **제안만** 하고, `epic_finish(agent_id="user")` 는 사용자가 수행한다.
 - `issue_claim` — reviewer 는 이슈를 점유하지 않음.
 - `agent_id` 누락 — 모든 `note_add` 에 필수.
 - 파일 검토 없이 LGTM 판정 — Read/Bash 로 실제 코드 확인 필수.

@@ -83,9 +83,11 @@ note_list(issue_id=<issue_id>, note_type="caveat", include_resolved=false, mode=
 ### Step 1 — 컨텍스트 적재 + 점유 확인
 
 ```
-session_restore(project_key, mode="agent")                     # 오리엔테이션 → mode='agent' (active_caveats 는 그대로 보존)
-issue_get(id=<issue_id>, include_tasks=true, include_notes=true)  # 작업 대상 본문 → mode="normal"(기본) 풀로드 유지
+session_restore(project_key, mode="agent")                     # 오리엔테이션 (목록 → mode="agent", active_caveats 보존)
+issue_get(id=<issue_id>, include_tasks=true, include_notes=true)  # 작업 대상 본문 → mode="normal"(기본) 풀로드
 ```
+
+> 조회 mode 규약(목록·오리엔테이션=`agent` · 본문 풀로드=`normal`)의 단일 출처: [README — 조회 호출 mode 규약](../README.md#조회-호출-mode-규약-agent-vs-normal).
 
 **필수 검증**: `issue.assigned_agent == <self>` 인가?
 - 아니면 → leader 가 claim 안 했거나 다른 워커가 점유. 즉시 종료, `WORKER_RESULT.status="abandoned"` 로 보고.
@@ -129,10 +131,11 @@ task_list(issue_id=<issue_id>, status="required", mode="agent")  → 처리할 t
 3.5. 스킬/하네스/Engram 평가 기록 ([EVALUATION]):
    작업이 완료되는 시점에 현재 실행 중인 하네스(Harness)의 안정성, 작업에 사용한 스킬(Skill)의 적절성 및 효율성, 그리고 Engram MCP/CLI를 사용하며 느꼈던 토큰 과다 사용이나 인터페이스 상의 불편한 점을 평가하는 피드백 노트를 작성합니다. (의무사항)
    ```
-   note_add(issue_id, note_type="reference", author="agent", agent_id=<self>,
+   note_add(issue_id, note_type="evaluation", author="agent", agent_id=<self>,
             summary="[EVALUATION] <피드백 핵심 요약>",
             detail="하네스 평가: <하네스 속도, 안정성 등>\n사용한 스킬 평가: <작업 중 사용한 스킬의 적절성, 유용성, 개선점>\nEngram 사용 피드백: <사용 중 겪은 불편한 점, 토큰 소모 평가 등>\n개선 제안: <스킬/하네스/Engram 개선 방안>")
    ```
+   > **note_type**: 평가 노트는 `note_type="evaluation"` 로 작성한다(engram 코어 P1). `summary` 의 `[EVALUATION]` 접두어는 코어 백필 전 회고(engram-retro) fallback 호환을 위해 병행 유지한다.
 4. 새 task 발견:
    ```
    task_insert_after(prev_id=<id>, title=...)

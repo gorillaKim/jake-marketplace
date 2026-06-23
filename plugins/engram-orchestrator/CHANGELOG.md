@@ -4,6 +4,29 @@ engram-orchestrator 플러그인의 버전별 변경 내역입니다.
 
 ---
 
+## [0.10.0] — 2026-06-23
+
+> 회고 기반 정확도·가드 개선 + engram 코어 신규 역량(evaluation note_type) 채택. (mission #73)
+
+### Changed
+
+- **조회 mode 규약 README SSOT화** — `mode="agent"`(목록·오리엔테이션) vs `mode="normal"`(본문 풀로드) 이원 규칙이 6개 에이전트/스킬 문서에 산재하던 것을 README `## 토큰 예산 / Payload 규칙` 하위 `### 조회 호출 mode 규약 (agent vs normal)` 단일 SSOT(테이블 + 식별자 파싱 예시)로 통합. analyzer/leader/worker/retro/reviewer + team-track 은 규약을 재서술하지 않고 동일 앵커를 링크 참조. 기존 `compact=true` 잔재 서술도 `mode="agent"` 기준으로 정정(마이그레이션 노트 1건만 보존). (#759, epic #210)
+- **플러그인 평가노트 작성 → `note_type="evaluation"` 전환** — worker(Step 3.5)·solo-track·team-track 의 `[EVALUATION]` 피드백 노트를 `reference`+접두어 대신 engram 코어 신규 `note_type="evaluation"`(P1)로 작성. `[EVALUATION]` summary 접두어는 코어 백필 전 회고 fallback 호환을 위해 병행 유지. `[SKILL]`/`[RULE AUDIT]` 노트는 회고의 evaluation 집계 오염을 막기 위해 `reference` 유지. (#767 [J1], epic #212)
+- **회고 평가 집계 → `note_type`·`epic_id` 조회 전환** — engram-retro 가 `[EVALUATION]` 텍스트 풀스캔 대신 `note_list(note_type="evaluation")` 로 평가 노트를 수집(에픽 단위는 `note_list(epic_id=N, note_type="evaluation", rollup=true)`, 코어 P1·P2). v0.10.0 이전 레거시 `reference`+`[EVALUATION]` 접두어 노트도 병행 수집(fallback). sprint-retro 리포트 §10 설명도 정합. (#768 [J2], epic #212)
+
+### Added
+
+- **engram-reviewer batch — 에픽 완료 제안(`epic_finish`)** — batch 검토 종료 시 하위 demo 이슈가 전수 LGTM 이고 `epic_get.ready_to_complete=true`(코어 P4)인 에픽을 식별해, 사용자에게 `AskUserQuestion` 으로 `epic_finish(epic_id, agent_id="user")` 를 **제안**. 에이전트는 `epic_finish` 를 직접 호출하지 않는다(`demo→finished` 와 동일하게 에픽 종결도 사용자 전용). batch 최종 보고에 "완료 후보 에픽" 라인 추가, review-issue 스킬 보고/주의사항도 정합. (#769 [J3], epic #212)
+- **solo-track 벌크 코멘트 점검 가드** — 다수 이슈를 한 세션에서 직렬 처리할 때도 이슈마다 Step A.continue read #1(`note_list(note_type="comment")`)을 1회씩 수행하도록 가드 추가(흐름 내 명시 + 금지 항목). 벌크 승격 중 per-issue 사용자 코멘트 누락 회귀(#2024) 방지. (#760, epic #210)
+- **동일 파일 다중 이슈 hunk 귀속 표준** — 커밋 없이 여러 이슈가 같은 파일을 수정할 때 context note "변경 파일" 에 이슈별 hunk(섹션/심볼/요지) 귀속을 명시하는 표준을 README Demo Gate(SSOT)에 정의. solo-track Step C 가드·Step D 템플릿, team-track `WORKER_RESULT.context_note` 가 이를 참조. 누적 `git diff` 에서 reviewer/사용자가 이슈별 변경분을 분리 검토 가능. (#761, epic #210)
+- **analyzer 드래프트 파일·라인 귀속 검증** — 자동생성한 issue description/goal 이 파일·라인·심볼을 지목하면 `issue_create` 전에 `grep`/`rg` 로 실제 일치를 검증하고, 불일치 시 보정하거나 `[귀속 미검증]` 표기 + caveat 로 남기도록 Step 3·분할 가이드에 명시. 드래프트가 엉뚱한 파일을 지목해 워커가 헛수고하는 회귀(#2022·#662) 방지. (#762, epic #210)
+
+### Migration
+
+- version `0.9.0` → `0.10.0`.
+
+---
+
 ## [0.9.0] — 2026-06-19
 
 > 토큰 효율(`mode="agent"` 마이그레이션) + 에이전트/스킬 동작 정확도·사용성 개선. (mission #60)
